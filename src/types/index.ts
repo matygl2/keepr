@@ -41,3 +41,15 @@ export interface KeeprUser {
   initial: string;
   plan: string;
 }
+
+/** The signed-in user, as exposed to the UI (never includes password data). */
+export interface AuthUser extends KeeprUser {
+  id: string;
+}
+
+/** What actually gets saved in AsyncStorage for each registered account. */
+export interface StoredAccount extends AuthUser {
+  passwordHash: string;
+  salt: string;
+  createdAt: string; // ISO timestamp
+}

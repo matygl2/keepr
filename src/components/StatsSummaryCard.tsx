@@ -1,10 +1,12 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, radius, spacing } from '../constants/theme';
-import { formatMoney, getStats, getTotalRegisteredValue, initialProducts } from '../data/mockData';
+import { useProducts } from '../context/ProductsContext';
+import { formatMoney, getStats, getTotalRegisteredValue } from '../data/mockData';
 
 export default function StatsSummaryCard() {
-  const stats = getStats(initialProducts);
-  const totalValue = getTotalRegisteredValue(initialProducts);
+  const { products } = useProducts();
+  const stats = getStats(products);
+  const totalValue = getTotalRegisteredValue(products);
 
   return (
     <View style={styles.card}>

@@ -10,11 +10,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SettingsRow from '../../components/SettingsRow';
 import { colors, fonts, radius, spacing } from '../../constants/theme';
-import { currentUser } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ProfileScreen() {
+  const { user, logout } = useAuth();
+
   const notImplemented = (label: string) =>
     Alert.alert(label, 'This is a UI demo — this screen is not yet built.');
+
+  const confirmLogout = () =>
+    Alert.alert('Log out', 'Your products stay saved on this device.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => logout() },
+    ]);
+
+  if (!user) return null;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -23,13 +33,13 @@ export default function ProfileScreen() {
 
         <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{currentUser.initial}</Text>
+            <Text style={styles.avatarText}>{user.initial}</Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{currentUser.name}</Text>
-            <Text style={styles.userEmail}>{currentUser.email}</Text>
+            <Text style={styles.userName}>{user.name}</Text>
+            <Text style={styles.userEmail}>{user.email}</Text>
             <View style={styles.planBadge}>
-              <Text style={styles.planBadgeText}>{currentUser.plan}</Text>
+              <Text style={styles.planBadgeText}>{user.plan}</Text>
             </View>
           </View>
         </View>
@@ -86,7 +96,7 @@ export default function ProfileScreen() {
 
         <TouchableOpacity
           style={styles.logoutButton}
-          onPress={() => notImplemented('Log Out')}
+          onPress={confirmLogout}
         >
           <Text style={styles.logoutText}>⇥ Log Out</Text>
         </TouchableOpacity>
