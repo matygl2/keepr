@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Linking,
   Platform,
@@ -225,15 +225,21 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   filterRow: {
+    flexDirection: 'row',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingTop: 0,
+    paddingBottom: spacing.sm,
+    alignItems: 'center',
   },
   filterPill: {
-    paddingVertical: 6,
+    minWidth: 105,
+    height: 52,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterPillActive: {
     backgroundColor: colors.secondary,
@@ -247,8 +253,9 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   mapWrap: {
-    flex: 1,
+    height: 300,
     marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
     borderRadius: radius.md,
     overflow: 'hidden',
   },

@@ -56,12 +56,14 @@
         {
           "calendarPermission": "Keepr necesita acceso a tu calendario para agregar recordatorios de vencimiento de garantía."
         }
-      ]
+      ],
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     }
-    
   }
 }
