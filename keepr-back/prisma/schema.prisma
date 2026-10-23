@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  plan         String    @default("Keepr Free")
+  createdAt    DateTime  @default(now())
+  products     Product[]
+}
+
+model Product {
+  id                 String             @id @default(cuid())
+  userId             String
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name               String
+  brand              String             @default("")
+  model              String             @default("")
+  category           String             // Tech | Home | Fashion | Other
+  subCategory        String             @default("")
+  icon               String             @default("📦")
+  store              String
+  purchaseDate       String             // YYYY-MM-DD
+  price              Int
+  warrantyExpiryDate String             // YYYY-MM-DD
+  serialNumber       String             @default("N/A")
+  documentation      Json               // [{ name, uploaded }]
+  calendarEventId    String?
+  createdAt          DateTime           @default(now())
+  maintenanceHistory MaintenanceEntry[]
+
+  @@index([userId])
+}
+
+model MaintenanceEntry {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  date      String  // YYYY-MM-DD
+  title     String
+  provider  String  @default("")
+  cost      Int     @default(0)
+  type      String  // purchase | maintenance
+
+  @@index([productId])
+}
