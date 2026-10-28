@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { rememberCapturedPhoto } from '../../api/receipt';
 import { colors, fonts, radius, spacing } from '../../constants/theme';
 
 type ScanStep = 'intro' | 'camera' | 'preview';
@@ -38,8 +39,10 @@ export default function ScanScreen() {
     if (!cameraRef.current || !cameraReady || capturing) return;
     setCapturing(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync();
+      // quality + base64: la cámara entrega la foto ya comprimida y lista para subir.
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.5, base64: true });
       if (!photo?.uri) throw new Error('No photo');
+      if (photo.base64) rememberCapturedPhoto(photo.uri, photo.base64);
       setPhotoUri(photo.uri);
       setStep('preview');
     } catch {

@@ -20,6 +20,7 @@ import { useProducts } from '../../context/ProductsContext';
 import { formatDate } from '../../data/mockData';
 import { Category, Product } from '../../types';
 import { addMonthsISO, isValidISODate, localTodayISO } from '../../utils/validation';
+import { resolvePhotoUri } from '../../api/receipt';
 
 const CATEGORIES: Category[] = ['Tech', 'Home', 'Fashion', 'Other'];
 
@@ -46,7 +47,7 @@ export default function NewProductScreen() {
   const { addProduct, attachReceipt } = useProducts();
   // Si venís de sacar una foto, llega su ubicación temporal en el teléfono.
   const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
-  const [photo, setPhoto] = useState<string | null>(photoUri ?? null);
+  const [photo, setPhoto] = useState<string | null>(photoUri ? resolvePhotoUri(photoUri) : null);
 
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
@@ -148,11 +149,6 @@ export default function NewProductScreen() {
         await attachReceipt(created.id, photo);
         goToProduct();
       } catch (err) {
-        console.error('Receipt upload failed:', err);
-
-        if (err instanceof Error) {
-          console.error('Error details:', err.message);
-        }
         Alert.alert(
           'Product saved, but the photo was not uploaded',
           errorMessage(err),
