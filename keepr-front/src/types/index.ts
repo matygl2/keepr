@@ -33,13 +33,18 @@ export interface Product {
   maintenanceHistory: MaintenanceEntry[];
   /** Set once the warranty expiry has been synced to the device's native calendar. */
   calendarEventId?: string;
+  /** Presente si el producto tiene foto de la garantía. Cambia al reemplazar la foto. */
+  receiptPhotoId?: string;
 }
 
 /**
  * Lo que se le manda al servidor para crear un producto. El servidor genera
  * el id; si no se manda maintenanceHistory, registra la compra automáticamente.
  */
-export type NewProductInput = Omit<Product, 'id' | 'maintenanceHistory' | 'calendarEventId'> & {
+export type NewProductInput = Omit<
+  Product,
+  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId'
+> & {
   maintenanceHistory?: Omit<MaintenanceEntry, 'id'>[];
 };
 

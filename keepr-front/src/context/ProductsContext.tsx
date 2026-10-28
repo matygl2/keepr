@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { api, errorMessage } from '../api/client';
 import { toPatchBody } from '../api/productPayload';
+import { uploadReceipt } from '../api/receipt';
 import { MaintenanceEntry, NewProductInput, Product } from '../types';
 
 type ProductsStatus = 'loading' | 'ready' | 'error';
@@ -24,6 +25,8 @@ interface ProductsContextValue {
   /** Edita campos del producto. `calendarEventId: undefined` lo borra. */
   updateProduct: (id: string, patch: Partial<Product>) => Promise<Product>;
   removeProduct: (id: string) => Promise<void>;
+  /** Sube (o reemplaza) la foto de la garantía de un producto ya guardado. */
+  attachReceipt: (id: string, photoUri: string) => Promise<Product>;
   addMaintenance: (id: string, entry: Omit<MaintenanceEntry, 'id'>) => Promise<Product>;
 }
 
@@ -78,6 +81,15 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     setProducts((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
+  const attachReceipt = useCallback(
+    async (id: string, photoUri: string) => {
+      const product = await uploadReceipt(id, photoUri);
+      replaceProduct(product);
+      return product;
+    },
+    [replaceProduct]
+  );
+
   const addMaintenance = useCallback(
     async (id: string, entry: Omit<MaintenanceEntry, 'id'>) => {
       const { product } = await api.post<{ product: Product }>(`/products/${id}/maintenance`, entry);
@@ -96,9 +108,20 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       addProduct,
       updateProduct,
       removeProduct,
+      attachReceipt,
       addMaintenance,
     }),
-    [products, status, loadError, reload, addProduct, updateProduct, removeProduct, addMaintenance]
+    [
+      products,
+      status,
+      loadError,
+      reload,
+      addProduct,
+      updateProduct,
+      removeProduct,
+      attachReceipt,
+      addMaintenance,
+    ]
   );
 
   return (

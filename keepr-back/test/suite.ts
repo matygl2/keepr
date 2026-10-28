@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 import type { Server } from 'node:http';
 import { after, before, describe, it } from 'node:test';
 import jwt from 'jsonwebtoken';
@@ -19,11 +22,13 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
     let server: Server;
     let base: string;
     let teardown: () => Promise<void>;
+    let uploadsDir: string;
 
     before(async () => {
       const ctx = await setup();
       teardown = ctx.teardown;
-      const app = createApp({ db: ctx.db, jwtSecret: SECRET, bcryptCost: 4, rateLimit: false });
+      uploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'keepr-uploads-'));
+      const app = createApp({ db: ctx.db, jwtSecret: SECRET, bcryptCost: 4, rateLimit: false, uploadsDir });
       server = app.listen(0);
       base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     });
@@ -31,6 +36,7 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
     after(async () => {
       server?.close();
       await teardown?.();
+      if (uploadsDir) fs.rmSync(uploadsDir, { recursive: true, force: true });
     });
 
     async function call(method: string, path: string, opts: { token?: string; body?: unknown; raw?: string } = {}) {
@@ -51,6 +57,16 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
       assert.equal(r.status, 201);
       return r.json as { token: string; user: { id: string } };
     }
+
+    async function rawGet(p: string, token?: string) {
+      const res = await fetch(base + p, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      return { status: res.status, type: res.headers.get('content-type'), bytes: Buffer.from(await res.arrayBuffer()) };
+    }
+
+    const filesInUploads = () => fs.readdirSync(uploadsDir).length;
+    // Un JPEG mínimo: lo que se valida son los primeros bytes (FF D8 FF) y el tamaño.
+    const jpeg = (fill = 7) =>
+      Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), Buffer.from('JFIF\0'), Buffer.alloc(200, fill), Buffer.from([0xff, 0xd9])]);
 
     const validProduct = {
       name: 'HP Victus 16',
@@ -213,6 +229,79 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
 
       assert.equal((await call('DELETE', `/products/${id}`, { token })).status, 204);
       assert.equal((await call('GET', `/products/${id}`, { token })).status, 404);
+    });
+
+    it('uploads a receipt photo, serves the same bytes to its owner and nobody else', async () => {
+      const owner = await register('photo-owner@email.com');
+      const other = await register('photo-other@email.com');
+      const created = (await call('POST', '/products', { token: owner.token, body: validProduct })).json.product;
+      assert.equal(created.receiptPhotoId, undefined);
+      assert.equal((await rawGet(`/products/${created.id}/receipt`, owner.token)).status, 404); // todavía sin foto
+
+      const photo = jpeg();
+      const up = await call('PUT', `/products/${created.id}/receipt`, { token: owner.token, body: { image: photo.toString('base64') } });
+      assert.equal(up.status, 200);
+      assert.match(up.json.product.receiptPhotoId, /^[0-9a-f-]{36}$/);
+      assert.equal(JSON.stringify(up.json).includes('.jpg'), false); // no se filtra el nombre del archivo
+      assert.equal(filesInUploads(), 1);
+
+      const got = await rawGet(`/products/${created.id}/receipt`, owner.token);
+      assert.equal(got.status, 200);
+      assert.equal(got.type, 'image/jpeg');
+      assert.ok(got.bytes.equals(photo));
+
+      assert.equal((await rawGet(`/products/${created.id}/receipt`)).status, 401);
+      assert.equal((await rawGet(`/products/${created.id}/receipt`, other.token)).status, 404);
+      assert.equal((await call('PUT', `/products/${created.id}/receipt`, { token: other.token, body: { image: photo.toString('base64') } })).status, 404);
+      assert.equal((await call('PUT', `/products/${created.id}/receipt`, { body: { image: photo.toString('base64') } })).status, 401);
+
+      // La foto aparece al listar y al pedir el detalle
+      assert.equal((await call('GET', '/products', { token: owner.token })).json.products.find((p: any) => p.id === created.id).receiptPhotoId, up.json.product.receiptPhotoId);
+    });
+
+    it('rejects photos that are not valid JPEGs or are too large', async () => {
+      const { token } = await register('photo-invalid@email.com');
+      const id = (await call('POST', '/products', { token, body: validProduct })).json.product.id;
+      const put = (image: unknown) => call('PUT', `/products/${id}/receipt`, { token, body: { image } });
+      const before = filesInUploads();
+
+      assert.equal((await call('PUT', `/products/${id}/receipt`, { token, body: {} })).status, 400);
+      assert.equal((await put('')).status, 400);
+      assert.equal((await put('esto no es base64!!')).status, 400);
+      assert.equal((await put('data:image/jpeg;base64,' + jpeg().toString('base64'))).status, 400);
+      const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(100)]);
+      const notJpeg = await put(png.toString('base64'));
+      assert.equal(notJpeg.status, 400);
+      assert.deepEqual(notJpeg.json.fields.image, ['Only JPEG images are accepted.']);
+
+      const tooBig = Buffer.concat([jpeg(), Buffer.alloc(5 * 1024 * 1024)]); // > 5 MB
+      const big = await put(tooBig.toString('base64'));
+      assert.equal(big.status, 400);
+      assert.match(big.json.fields.image[0], /too large/);
+
+      // Un cuerpo de más de 7 MB ni siquiera se lee
+      assert.equal((await put('A'.repeat(8 * 1024 * 1024))).status, 413);
+      assert.equal(filesInUploads(), before); // nada quedó guardado
+    });
+
+    it('replaces the photo (deleting the old file) and deletes it together with the product', async () => {
+      const { token } = await register('photo-replace@email.com');
+      const id = (await call('POST', '/products', { token, body: validProduct })).json.product.id;
+      const start = filesInUploads();
+
+      const first = await call('PUT', `/products/${id}/receipt`, { token, body: { image: jpeg(1).toString('base64') } });
+      const second = await call('PUT', `/products/${id}/receipt`, { token, body: { image: jpeg(2).toString('base64') } });
+      assert.notEqual(first.json.product.receiptPhotoId, second.json.product.receiptPhotoId);
+      assert.equal(filesInUploads(), start + 1); // el archivo viejo se borró
+      assert.ok((await rawGet(`/products/${id}/receipt`, token)).bytes.equals(jpeg(2)));
+
+      assert.equal((await call('DELETE', `/products/${id}`, { token })).status, 204);
+      assert.equal(filesInUploads(), start); // y al borrar el producto, también la foto
+    });
+
+    it('keeps rejecting big bodies on every other route', async () => {
+      const r = await call('POST', '/auth/login', { body: { email: 'a@b.com', password: 'x'.repeat(200_000) } });
+      assert.equal(r.status, 413);
     });
 
     it('answers malformed JSON with 400 and unknown routes with 404', async () => {

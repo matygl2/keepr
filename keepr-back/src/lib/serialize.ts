@@ -24,6 +24,7 @@ interface ProductRow {
   serialNumber: string;
   documentation: unknown;
   calendarEventId: string | null;
+  receiptImage?: string | null;
   maintenanceHistory: {
     id: string;
     date: string;
@@ -51,6 +52,9 @@ export function toProduct(p: ProductRow) {
     serialNumber: p.serialNumber,
     documentation: p.documentation,
     calendarEventId: p.calendarEventId ?? undefined,
+    // Si hay foto, la app la pide en GET /products/:id/receipt. Este id cambia
+    // cuando se reemplaza la foto, así la app no muestra una imagen vieja.
+    receiptPhotoId: p.receiptImage ? p.receiptImage.replace(/\.jpg$/, '') : undefined,
     maintenanceHistory: [...p.maintenanceHistory]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((m) => ({

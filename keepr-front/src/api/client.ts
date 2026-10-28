@@ -32,7 +32,8 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  auth = true
+  auth = true,
+  timeoutMs = TIMEOUT_MS
 ): Promise<T> {
   if (!BASE_URL) {
     throw new ApiError(
@@ -42,7 +43,7 @@ async function request<T>(
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let status: number;
   let ok: boolean;
@@ -87,9 +88,22 @@ export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body: unknown, options: { auth?: boolean } = {}) =>
     request<T>('POST', path, body, options.auth ?? true),
+  // timeoutMs: subir una foto por Wi-Fi lenta puede tardar más que un pedido normal.
+  put: <T>(path: string, body: unknown, options: { timeoutMs?: number } = {}) =>
+    request<T>('PUT', path, body, true, options.timeoutMs),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   delete: (path: string) => request<void>('DELETE', path),
 };
+
+/** URL completa de una ruta de la API (para mostrar imágenes protegidas). */
+export function apiUrl(path: string): string {
+  return BASE_URL + path;
+}
+
+/** Header de autenticación actual, para pedidos que no pasan por `api` (como las imágenes). */
+export function getAuthHeaders(): Record<string, string> {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
 
 /** Convierte cualquier error en un texto para mostrarle al usuario. */
 export function errorMessage(err: unknown): string {

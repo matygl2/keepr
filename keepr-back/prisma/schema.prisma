@@ -34,6 +34,7 @@ model Product {
   serialNumber       String             @default("N/A")
   documentation      Json               // [{ name, uploaded }]
   calendarEventId    String?
+  receiptImage       String?            // nombre del archivo en la carpeta uploads/
   createdAt          DateTime           @default(now())
   maintenanceHistory MaintenanceEntry[]
 
