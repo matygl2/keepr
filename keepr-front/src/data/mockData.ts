@@ -249,6 +249,11 @@ export function getProductById(
 export function getTotalRegisteredValue(products: Product[]): number {
   return products.reduce((sum, p) => sum + p.price, 0);
 }
+export function getInsuredValue(products: Product[]): number {
+  return products
+    .filter((p) => getWarrantyStatus(p.warrantyExpiryDate) !== 'expired')
+    .reduce((sum, p) => sum + p.price, 0);
+}
 
 export function getStats(products: Product[]) {
   const total = products.length;
