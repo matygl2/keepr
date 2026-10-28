@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
+import { errorMessage } from '../../../api/client';
 import {
   Alert,
   ScrollView,
@@ -20,6 +21,7 @@ import {
 import ReceiptPhotoCard from '../../../components/ReceiptPhotoCard';
 import { useProducts } from '../../../context/ProductsContext';
 import { useCalendarSync } from '../../../hooks/useCalendarSync';
+import type { Product } from '../../../types';
 
 const STATUS_DOT_COLOR = {
   active: colors.success,
@@ -27,18 +29,22 @@ const STATUS_DOT_COLOR = {
   expired: colors.textMuted,
 };
 
-function getWarrantyProgress(purchaseDate: string, expiryDate: string): number {
+function getWarrantyProgress(
+  purchaseDate: string,
+  expiryDate: string
+): number {
   const start = new Date(purchaseDate).getTime();
   const end = new Date(expiryDate).getTime();
   const now = Date.now();
+
   if (now >= end) return 1;
   if (now <= start) return 0;
+
   return (now - start) / (end - start);
 }
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const { products } = useProducts();
   const product = getProductById(products, id);
 
@@ -50,19 +56,61 @@ export default function ProductDetailScreen() {
     );
   }
 
+  return <ProductDetailContent product={product} />;
+}
+
+function ProductDetailContent({ product }: { product: Product }) {
+  const router = useRouter();
+  const { removeProduct } = useProducts();
+
+  const {
+    synced,
+    loading: calendarLoading,
+    toggle: toggleCalendarSync,
+  } = useCalendarSync(product);
+
   const status = getWarrantyStatus(product.warrantyExpiryDate);
   const progress = getWarrantyProgress(
     product.purchaseDate,
     product.warrantyExpiryDate
   );
-  const { synced, loading: calendarLoading, toggle: toggleCalendarSync } =
-    useCalendarSync(product);
+
+  const handleDeleteProduct = () => {
+    Alert.alert(
+      'Delete product',
+      `Are you sure you want to delete "${product.name}"? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              router.replace('/(tabs)');
+              await removeProduct(product.id);
+            } catch (err) {
+              Alert.alert(
+                'Could not delete product',
+                errorMessage(err)
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
 
@@ -70,59 +118,80 @@ export default function ProductDetailScreen() {
             <View style={styles.headerIcon}>
               <Text style={{ fontSize: 28 }}>{product.icon}</Text>
             </View>
-            <View>
+
+            <View style={styles.headerText}>
               <Text style={styles.headerTitle}>{product.name}</Text>
-              <Text style={styles.headerSubtitle}>{product.subCategory}</Text>
+              <Text style={styles.headerSubtitle}>
+                {product.subCategory}
+              </Text>
             </View>
           </View>
+
           <View
-            style={[styles.statusDot, { backgroundColor: STATUS_DOT_COLOR[status] }]}
+            style={[
+              styles.statusDot,
+              { backgroundColor: STATUS_DOT_COLOR[status] },
+            ]}
           />
         </View>
 
         <View style={styles.body}>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PURCHASE</Text>
+
             <View style={styles.threeCol}>
-              <View>
+              <View style={styles.threeColItem}>
                 <Text style={styles.fieldLabel}>PURCHASED</Text>
-                <Text style={styles.fieldValue}>{formatDate(product.purchaseDate)}</Text>
+                <Text style={styles.fieldValue}>
+                  {formatDate(product.purchaseDate)}
+                </Text>
               </View>
-              <View>
+
+              <View style={styles.threeColItem}>
                 <Text style={styles.fieldLabel}>STORE</Text>
                 <Text style={styles.fieldValue}>{product.store}</Text>
               </View>
-              <View>
+
+              <View style={styles.threeColItem}>
                 <Text style={styles.fieldLabel}>PRICE</Text>
-                <Text style={styles.fieldValue}>{formatMoney(product.price)}</Text>
+                <Text style={styles.fieldValue}>
+                  {formatMoney(product.price)}
+                </Text>
               </View>
             </View>
           </View>
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>WARRANTY</Text>
+
             <View style={styles.warrantyRow}>
               <Text style={styles.fieldLabel}>Expires</Text>
               <Text style={styles.fieldValue}>
                 {formatDate(product.warrantyExpiryDate)}
               </Text>
             </View>
+
             <View style={styles.warrantyRow}>
               <Text style={styles.fieldLabel}>Remaining</Text>
               <Text
                 style={[
                   styles.fieldValue,
-                  status === 'expiring' && { color: colors.danger },
+                  status === 'expiring' && {
+                    color: colors.danger,
+                  },
                 ]}
               >
                 {formatRemaining(product.warrantyExpiryDate)}
               </Text>
             </View>
+
             <View style={styles.progressTrack}>
               <View
                 style={[
                   styles.progressFill,
-                  { width: `${Math.min(progress, 1) * 100}%` },
+                  {
+                    width: `${Math.min(progress, 1) * 100}%`,
+                  },
                 ]}
               />
             </View>
@@ -135,7 +204,10 @@ export default function ProductDetailScreen() {
               onPress={toggleCalendarSync}
               disabled={calendarLoading}
             >
-              <Text style={styles.calendarButtonIcon}>{synced ? '✓' : '📅'}</Text>
+              <Text style={styles.calendarButtonIcon}>
+                {synced ? '✓' : '📅'}
+              </Text>
+
               <Text
                 style={[
                   styles.calendarButtonText,
@@ -145,18 +217,27 @@ export default function ProductDetailScreen() {
                 {calendarLoading
                   ? 'Syncing…'
                   : synced
-                  ? 'Added to your Calendar'
-                  : 'Add warranty reminder to Calendar'}
+                    ? 'Added to your Calendar'
+                    : 'Add warranty reminder to Calendar'}
               </Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PRODUCT INFORMATION</Text>
-            <InfoRow label="Serial number" value={product.serialNumber} isFirst />
+
+            <InfoRow
+              label="Serial number"
+              value={product.serialNumber}
+              isFirst
+            />
             <InfoRow label="Model" value={product.model} />
             <InfoRow label="Brand" value={product.brand} />
-            <InfoRow label="Category" value={product.subCategory} isLast />
+            <InfoRow
+              label="Category"
+              value={product.subCategory}
+              isLast
+            />
           </View>
 
           {product.receiptPhotoId ? (
@@ -165,13 +246,22 @@ export default function ProductDetailScreen() {
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>DOCUMENTATION</Text>
+
             {product.documentation.map((doc) => (
               <View key={doc.name} style={styles.docRow}>
                 <View style={styles.docIconWrap}>
                   <Text>📄</Text>
                 </View>
+
                 <Text style={styles.docName}>{doc.name}</Text>
-                <Text style={doc.uploaded ? styles.docCheck : styles.docMissing}>
+
+                <Text
+                  style={
+                    doc.uploaded
+                      ? styles.docCheck
+                      : styles.docMissing
+                  }
+                >
                   {doc.uploaded ? '✓' : '—'}
                 </Text>
               </View>
@@ -181,24 +271,49 @@ export default function ProductDetailScreen() {
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push(`/product/${product.id}/maintenance`)}
+              onPress={() =>
+                router.push(`/product/${product.id}/maintenance`)
+              }
             >
               <Text style={styles.actionIcon}>🔧</Text>
-              <Text style={styles.actionLabel}>Maintenance History</Text>
+              <Text style={styles.actionLabel}>
+                Maintenance History
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionCard, styles.actionCardOutline]}
+              style={[
+                styles.actionCard,
+                styles.actionCardOutline,
+              ]}
               onPress={() =>
-                Alert.alert('Transfer Product', 'This is a UI demo action.')
+                Alert.alert(
+                  'Transfer Product',
+                  'This is a UI demo action.'
+                )
               }
             >
               <Text style={styles.actionIcon}>🔗</Text>
-              <Text style={[styles.actionLabel, { color: colors.primary }]}>
+              <Text
+                style={[
+                  styles.actionLabel,
+                  { color: colors.primary },
+                ]}
+              >
                 Transfer Product
               </Text>
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={handleDeleteProduct}
+            accessibilityRole="button"
+          >
+            <Text style={styles.deleteButtonText}>
+              🗑 Delete product
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -274,6 +389,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerText: {
+    flex: 1,
+  },
   headerTitle: {
     fontFamily: fonts.serif,
     fontSize: 26,
@@ -312,6 +430,10 @@ const styles = StyleSheet.create({
   threeCol: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  threeColItem: {
+    flex: 1,
   },
   fieldLabel: {
     fontSize: 12,
@@ -428,5 +550,19 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     fontSize: 13,
     textAlign: 'center',
+  },
+  deleteButton: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteButtonText: {
+    color: colors.danger,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
