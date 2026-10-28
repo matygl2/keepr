@@ -1,11 +1,19 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import type { AppConfig } from '../config';
 import { HttpError, parse } from '../lib/errors';
+import {
+  decodeJpeg,
+  deleteReceipt,
+  receiptFilePath,
+  RECEIPT_JSON_LIMIT,
+  saveReceipt,
+} from '../lib/receipts';
 import { toProduct } from '../lib/serialize';
 import {
   CATEGORIES,
   createProductSchema,
   maintenanceInputSchema,
+  receiptUploadSchema,
   updateProductSchema,
 } from '../schemas';
 
@@ -121,7 +129,44 @@ export function productsRouter(config: AppConfig) {
   router.delete('/:id', async (req, res) => {
     const current = await getOwned(req.params.id, res.locals.userId);
     await db.product.delete({ where: { id: current.id } });
+    if (current.receiptImage) await deleteReceipt(config.uploadsDir, current.receiptImage);
     res.status(204).end();
+  });
+
+  // Sube (o reemplaza) la foto de la garantía. Cuerpo: { "image": "<base64 de un JPEG>" }.
+  router.put('/:id/receipt', express.json({ limit: RECEIPT_JSON_LIMIT }), async (req, res) => {
+    const { image } = parse(receiptUploadSchema, req.body);
+    const bytes = decodeJpeg(image);
+    const current = await getOwned(req.params.id, res.locals.userId);
+
+    const fileName = await saveReceipt(config.uploadsDir, bytes);
+    try {
+      const updated = await db.product.update({
+        where: { id: current.id },
+        data: { receiptImage: fileName },
+        include,
+      });
+      if (current.receiptImage) await deleteReceipt(config.uploadsDir, current.receiptImage);
+      res.json({ product: toProduct(updated) });
+    } catch (err) {
+      // Si no se pudo anotar en la base, no dejamos el archivo huérfano.
+      await deleteReceipt(config.uploadsDir, fileName);
+      throw err;
+    }
+  });
+
+  // Devuelve la foto, solo a su dueño (la app manda el token en el header).
+  router.get('/:id/receipt', async (req, res, next) => {
+    const current = await getOwned(req.params.id, res.locals.userId);
+    const file = current.receiptImage ? receiptFilePath(config.uploadsDir, current.receiptImage) : null;
+    if (!file) throw new HttpError(404, 'This product has no photo.');
+
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.type('image/jpeg');
+    res.sendFile(file, (err) => {
+      if (err && !res.headersSent) next(new HttpError(404, 'Photo not found.'));
+    });
   });
 
   router.post('/:id/maintenance', async (req, res) => {

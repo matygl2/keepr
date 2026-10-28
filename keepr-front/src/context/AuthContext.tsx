@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import React, {
   createContext,
   useCallback,
@@ -60,6 +61,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearSession = useCallback(async () => {
     setAuthToken(null);
     setUser(null);
+    // Las fotos de garantías son privadas: se borran de la caché del teléfono.
+    void Image.clearMemoryCache().catch(() => {});
+    void Image.clearDiskCache().catch(() => {});
     await clearToken();
   }, []);
 

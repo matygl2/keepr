@@ -17,6 +17,7 @@ import {
   getProductById,
   getWarrantyStatus,
 } from '../../../data/mockData';
+import ReceiptPhotoCard from '../../../components/ReceiptPhotoCard';
 import { useProducts } from '../../../context/ProductsContext';
 import { useCalendarSync } from '../../../hooks/useCalendarSync';
 
@@ -157,6 +158,10 @@ export default function ProductDetailScreen() {
             <InfoRow label="Brand" value={product.brand} />
             <InfoRow label="Category" value={product.subCategory} isLast />
           </View>
+
+          {product.receiptPhotoId ? (
+            <ReceiptPhotoCard productId={product.id} photoId={product.receiptPhotoId} />
+          ) : null}
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>DOCUMENTATION</Text>

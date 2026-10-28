@@ -1,4 +1,5 @@
-import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -17,7 +18,7 @@ import FormField from '../../components/FormField';
 import { colors, fonts, radius, spacing } from '../../constants/theme';
 import { useProducts } from '../../context/ProductsContext';
 import { formatDate } from '../../data/mockData';
-import { Category } from '../../types';
+import { Category, Product } from '../../types';
 import { addMonthsISO, isValidISODate, localTodayISO } from '../../utils/validation';
 
 const CATEGORIES: Category[] = ['Tech', 'Home', 'Fashion', 'Other'];
@@ -42,7 +43,10 @@ type FieldName = 'name' | 'store' | 'purchaseDate' | 'price' | 'customExpiry';
 
 export default function NewProductScreen() {
   const router = useRouter();
-  const { addProduct } = useProducts();
+  const { addProduct, attachReceipt } = useProducts();
+  // Si venís de sacar una foto, llega su ubicación temporal en el teléfono.
+  const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
+  const [photo, setPhoto] = useState<string | null>(photoUri ?? null);
 
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
@@ -55,7 +59,7 @@ export default function NewProductScreen() {
   const [duration, setDuration] = useState<DurationKey>('1y');
   const [customExpiry, setCustomExpiry] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
-  const [docs, setDocs] = useState({ receipt: false, warranty: false, manual: false });
+  const [docs, setDocs] = useState({ receipt: Boolean(photoUri), warranty: false, manual: false });
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [saving, setSaving] = useState(false);
 
@@ -104,9 +108,11 @@ export default function NewProductScreen() {
 
     const priceNumber = Number(price);
     setSaving(true);
+
+    let created: Product;
     try {
       // El servidor genera el id y registra la compra en el historial.
-      const created = await addProduct({
+      created = await addProduct({
         name: name.trim(),
         brand: brand.trim(),
         model: model.trim(),
@@ -119,16 +125,46 @@ export default function NewProductScreen() {
         warrantyExpiryDate: expiryDate,
         serialNumber: serialNumber.trim() || 'N/A',
         documentation: [
-          { name: 'Receipt', uploaded: docs.receipt },
+          { name: 'Receipt', uploaded: docs.receipt || photo !== null },
           { name: 'Warranty document', uploaded: docs.warranty },
           { name: 'Manual', uploaded: docs.manual },
         ],
       });
-      router.replace(`/product/${created.id}`);
     } catch (err) {
       Alert.alert('Could not save', errorMessage(err));
       setSaving(false);
+      return;
     }
+
+    const goToProduct = () => router.replace(`/product/${created.id}`);
+    if (!photo) {
+      goToProduct();
+      return;
+    }
+
+    // El producto ya está guardado: si la foto falla, se puede reintentar o seguir sin ella.
+    const uploadPhoto = async () => {
+      try {
+        await attachReceipt(created.id, photo);
+        goToProduct();
+      } catch (err) {
+        console.error('Receipt upload failed:', err);
+
+        if (err instanceof Error) {
+          console.error('Error details:', err.message);
+        }
+        Alert.alert(
+          'Product saved, but the photo was not uploaded',
+          errorMessage(err),
+          [
+            { text: 'Skip', style: 'cancel', onPress: goToProduct },
+            { text: 'Try again', onPress: () => void uploadPhoto() },
+          ],
+          { cancelable: false }
+        );
+      }
+    };
+    await uploadPhoto();
   };
 
   return (
@@ -151,6 +187,19 @@ export default function NewProductScreen() {
           <Text style={styles.subtitle}>
             Enter the purchase details and Keepr will track the warranty for you.
           </Text>
+
+          {photo ? (
+            <View style={styles.photoCard}>
+              <Image source={{ uri: photo }} style={styles.photoThumb} contentFit="cover" />
+              <View style={styles.photoInfo}>
+                <Text style={styles.photoTitle}>Photo attached</Text>
+                <Text style={styles.photoText}>It will be saved with your product.</Text>
+                <TouchableOpacity onPress={() => setPhoto(null)} hitSlop={8}>
+                  <Text style={styles.photoRemove}>Remove photo</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
 
           <FormField
             label="PRODUCT NAME *"
@@ -405,6 +454,40 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     alignItems: 'center',
+  },
+  photoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  photoThumb: {
+    width: 72,
+    height: 96,
+    borderRadius: radius.sm,
+    backgroundColor: colors.iconBg,
+  },
+  photoInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  photoTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  photoText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  photoRemove: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
   saveButtonDisabled: {
     opacity: 0.6,

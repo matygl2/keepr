@@ -6,4 +6,6 @@ export interface AppConfig {
   jwtSecret: string;
   jwtExpiresInSeconds: number;
   bcryptCost: number;
+  /** Carpeta donde se guardan las fotos de las garantías. */
+  uploadsDir: string;
 }

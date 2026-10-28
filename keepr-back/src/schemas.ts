@@ -67,5 +67,10 @@ export const createProductSchema = productBase
 // porque en un PATCH puede venir solo una de las dos fechas.
 export const updateProductSchema = productBase.partial();
 
+// El contenido real (JPEG, tamaño) se comprueba en lib/receipts.ts.
+export const receiptUploadSchema = z.object({
+  image: z.string().min(1, 'Send the photo as base64 in the "image" field.'),
+});
+
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
