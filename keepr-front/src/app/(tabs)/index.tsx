@@ -1,35 +1,36 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import CategoryFilter from '../../components/CategoryFilter';
-import ExpiringBanner from '../../components/ExpiringBanner';
-import ProductCard from '../../components/ProductCard';
-import StatsSummaryCard from '../../components/StatsSummaryCard';
-import WarrantyAlertOverlay from '../../components/WarrantyAlertOverlay';
-import { colors, fonts, spacing } from '../../constants/theme';
-import { getExpiringSoonProducts } from '../../data/mockData';
-import { useProducts } from '../../context/ProductsContext';
+import { useMemo, useState } from "react";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import CategoryFilter from "../../components/CategoryFilter";
+import ExpiringBanner from "../../components/ExpiringBanner";
+import ProductCard from "../../components/ProductCard";
+import StatsSummaryCard from "../../components/StatsSummaryCard";
+
+import { colors, fonts, spacing } from "../../constants/theme";
+import { useProducts } from "../../context/ProductsContext";
+import { getExpiringSoonProducts } from "../../data/mockData";
 
 export default function HomeScreen() {
   const { products } = useProducts();
-  const [category, setCategory] = useState('All');
-  const [alertVisible, setAlertVisible] = useState(false);
-  const expiringSoon = useMemo(() => getExpiringSoonProducts(products), [products]);
 
-  useEffect(() => {
-    if (expiringSoon.length > 0) {
-      const timer = setTimeout(() => setAlertVisible(true), 600);
-      return () => clearTimeout(timer);
-    }
-  }, [expiringSoon.length]);
+  const [category, setCategory] = useState("All");
 
+  // Productos cuyas garantías están próximas a vencer
+  const expiringSoon = useMemo(
+    () => getExpiringSoonProducts(products),
+    [products],
+  );
+
+  // Filtrar productos según la categoría seleccionada
   const filtered = useMemo(() => {
-    if (category === 'All') return products;
+    if (category === "All") return products;
+
     return products.filter((p) => p.category === category);
   }, [category, products]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
@@ -38,17 +39,15 @@ export default function HomeScreen() {
         ListHeaderComponent={
           <View>
             <StatsSummaryCard />
+
+            {/* Aviso de garantías próximas a vencer */}
             <ExpiringBanner count={expiringSoon.length} />
+
             <CategoryFilter selected={category} onSelect={setCategory} />
+
             <Text style={styles.sectionTitle}>Your belongings</Text>
           </View>
         }
-      />
-
-      <WarrantyAlertOverlay
-        visible={alertVisible}
-        product={expiringSoon[0] ?? null}
-        onDismiss={() => setAlertVisible(false)}
       />
     </SafeAreaView>
   );
@@ -59,10 +58,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+
   listContent: {
     padding: spacing.lg,
     paddingBottom: spacing.xl,
   },
+
   sectionTitle: {
     fontFamily: fonts.serif,
     fontSize: 22,
