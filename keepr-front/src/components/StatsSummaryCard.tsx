@@ -1,17 +1,26 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, radius, spacing } from '../constants/theme';
 import { useProducts } from '../context/ProductsContext';
-import { formatMoney, getStats, getTotalRegisteredValue } from '../data/mockData';
+import {
+  formatMoney,
+  getInsuredValue,
+  getStats,
+  getTotalRegisteredValue,
+} from '../data/mockData';
 
 export default function StatsSummaryCard() {
   const { products } = useProducts();
   const stats = getStats(products);
   const totalValue = getTotalRegisteredValue(products);
+  const insuredValue = getInsuredValue(products);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.label}>TOTAL REGISTERED VALUE</Text>
-      <Text style={styles.value}>{formatMoney(totalValue)} ARS</Text>
+      <Text style={styles.label}>INSURED VALUE</Text>
+      <Text style={styles.value}>{formatMoney(insuredValue)} ARS</Text>
+      <Text style={styles.subValue}>
+        Total registered: {formatMoney(totalValue)} ARS
+      </Text>
 
       <View style={styles.row}>
         <View style={styles.statItem}>
@@ -50,6 +59,11 @@ const styles = StyleSheet.create({
     fontFamily: fonts.serif,
     color: colors.white,
     fontSize: 32,
+  },
+  subValue: {
+    color: '#B9CBCE',
+    fontSize: 13,
+    marginTop: 4,
     marginBottom: spacing.lg,
   },
   row: {
