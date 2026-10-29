@@ -123,6 +123,94 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
       assert.equal(wrong.json.error, unknown.json.error);
     });
 
+    it('changes the password: needs the current one, keeps the session and the new password works', async () => {
+      const { token } = await register('pw@email.com'); // la contraseña inicial es 'secret123'
+      const change = (body: unknown) => call('POST', '/auth/change-password', { token, body });
+      const login = (password: string) =>
+        call('POST', '/auth/login', { body: { email: 'pw@email.com', password } });
+
+      // Sin sesión no se puede.
+      const anonymous = await call('POST', '/auth/change-password', {
+        body: { currentPassword: 'secret123', newPassword: 'newsecret456' },
+      });
+      assert.equal(anonymous.status, 401);
+
+      // Contraseña actual incorrecta: 400 con el error en ese campo (NUNCA 401: la app cerraría la sesión).
+      const wrong = await change({ currentPassword: 'wrongpass', newPassword: 'newsecret456' });
+      assert.equal(wrong.status, 400);
+      assert.ok(wrong.json.fields.currentPassword);
+
+      // Nueva contraseña inválida, igual a la actual, o campos que faltan.
+      const short = await change({ currentPassword: 'secret123', newPassword: '123' });
+      assert.equal(short.status, 400);
+      assert.ok(short.json.fields.newPassword);
+      const same = await change({ currentPassword: 'secret123', newPassword: 'secret123' });
+      assert.equal(same.status, 400);
+      assert.ok(same.json.fields.newPassword);
+      assert.equal((await change({})).status, 400);
+
+      // Ningún intento fallido cambió nada: la contraseña vieja sigue entrando.
+      assert.equal((await login('secret123')).status, 200);
+
+      // El cambio correcto.
+      const ok = await change({ currentPassword: 'secret123', newPassword: 'newsecret456' });
+      assert.equal(ok.status, 204);
+
+      // La sesión actual sigue activa, la contraseña vieja ya no entra y la nueva sí.
+      assert.equal((await call('GET', '/auth/me', { token })).status, 200);
+      assert.equal((await login('secret123')).status, 401);
+      assert.equal((await login('newsecret456')).status, 200);
+    });
+
+    it('deletes the account with the right password, removing its products and photos but nothing from other users', async () => {
+      const doomed = await register('doomed@email.com'); // la contraseña es 'secret123'
+      const survivor = await register('survivor@email.com');
+      const remove = (body: unknown, token?: string) => call('POST', '/auth/delete-account', { token, body });
+      const before = filesInUploads(); // los números de archivos se comparan contra este valor
+
+      // Cada uno tiene un producto con una foto de recibo.
+      const a = (await call('POST', '/products', { token: doomed.token, body: validProduct })).json.product;
+      const b = (await call('POST', '/products', { token: survivor.token, body: validProduct })).json.product;
+      for (const [id, token] of [[a.id, doomed.token], [b.id, survivor.token]] as const) {
+        const up = await call('PUT', `/products/${id}/receipt`, { token, body: { image: jpeg().toString('base64') } });
+        assert.equal(up.status, 200);
+      }
+      assert.equal(filesInUploads(), before + 2);
+
+      // Sin sesión, sin contraseña o con una incorrecta: no se borra nada.
+      assert.equal((await remove({ password: 'secret123' })).status, 401);
+      assert.equal((await remove({}, doomed.token)).status, 400);
+      // Contraseña incorrecta: 400 con el error en el campo (NUNCA 401: la app cerraría la sesión).
+      const wrong = await remove({ password: 'wrongpass' }, doomed.token);
+      assert.equal(wrong.status, 400);
+      assert.ok(wrong.json.fields.password);
+      assert.equal((await call('GET', '/auth/me', { token: doomed.token })).status, 200);
+      assert.equal(filesInUploads(), before + 2);
+
+      // Con la contraseña correcta se borra todo lo de esa cuenta.
+      assert.equal((await remove({ password: 'secret123' }, doomed.token)).status, 204);
+      assert.equal(filesInUploads(), before + 1); // se fue su foto; queda la del otro usuario
+      assert.equal((await call('GET', '/auth/me', { token: doomed.token })).status, 401); // la sesión ya no sirve
+      assert.equal((await call('GET', '/products', { token: doomed.token })).status, 401);
+      const login = await call('POST', '/auth/login', { body: { email: 'doomed@email.com', password: 'secret123' } });
+      assert.equal(login.status, 401);
+
+      // El otro usuario conserva su producto y su foto.
+      const left = await call('GET', '/products', { token: survivor.token });
+      assert.equal(left.json.products.length, 1);
+      assert.equal((await rawGet(`/products/${b.id}/receipt`, survivor.token)).status, 200);
+
+      // El email queda libre: se puede volver a registrar.
+      const again = await call('POST', '/auth/register', {
+        body: { name: 'Doomed Again', email: 'doomed@email.com', password: 'secret123' },
+      });
+      assert.equal(again.status, 201);
+
+      // Limpieza: dejamos la carpeta de fotos como estaba para no afectar a otros tests.
+      await call('DELETE', `/products/${b.id}`, { token: survivor.token });
+      assert.equal(filesInUploads(), before);
+    });
+
     it('protects /auth/me and /products', async () => {
       assert.equal((await call('GET', '/auth/me')).status, 401);
       assert.equal((await call('GET', '/products')).status, 401);

@@ -1,6 +1,9 @@
 import { router } from "expo-router";
+import { useState } from "react";
 import {
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -9,11 +12,93 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { api, ApiError, errorMessage } from "../../api/client";
+import FormField from "../../components/FormField";
 import { colors, fonts, radius, spacing } from "../../constants/theme";
 import { useAuth } from "../../context/AuthContext";
 
+type PasswordErrors = Partial<
+  Record<"current" | "next" | "confirm", string>
+>;
+
 export default function SecurityScreen() {
   const { user, logout } = useAuth();
+
+  // Formulario de cambio de contraseña (se abre dentro de la tarjeta).
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [errors, setErrors] = useState<PasswordErrors>({});
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [passwordChanged, setPasswordChanged] = useState(false);
+
+  const resetPasswordForm = () => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setErrors({});
+    setFormError("");
+  };
+
+  const openPasswordForm = () => {
+    resetPasswordForm();
+    setPasswordChanged(false);
+    setEditingPassword(true);
+  };
+
+  const cancelPasswordForm = () => {
+    resetPasswordForm();
+    setEditingPassword(false);
+  };
+
+  // Mismas reglas que el backend; así el usuario ve el error sin esperar la red.
+  const validatePassword = (): PasswordErrors => {
+    const found: PasswordErrors = {};
+    if (!currentPassword) found.current = "Enter your current password.";
+    if (newPassword.length < 6) found.next = "Use at least 6 characters.";
+    else if (newPassword === currentPassword)
+      found.next = "Choose a password different from the current one.";
+    if (confirmPassword !== newPassword)
+      found.confirm = "Passwords do not match.";
+    return found;
+  };
+
+  const submitPasswordChange = async () => {
+    if (submitting) return;
+    const found = validatePassword();
+    setErrors(found);
+    setFormError("");
+    if (Object.keys(found).length > 0) return;
+
+    setSubmitting(true);
+    try {
+      await api.post("/auth/change-password", { currentPassword, newPassword });
+      resetPasswordForm();
+      setEditingPassword(false);
+      setPasswordChanged(true);
+    } catch (err) {
+      // El servidor marca en qué campo está el problema (por ejemplo, la
+      // contraseña actual incorrecta); cualquier otro error va arriba del botón.
+      if (err instanceof ApiError && err.fields) {
+        const fromServer: PasswordErrors = {};
+        if (err.fields.currentPassword?.[0])
+          fromServer.current = err.fields.currentPassword[0];
+        if (err.fields.newPassword?.[0])
+          fromServer.next = err.fields.newPassword[0];
+        if (Object.keys(fromServer).length > 0) {
+          setErrors(fromServer);
+        } else {
+          setFormError(errorMessage(err));
+        }
+      } else {
+        setFormError(errorMessage(err));
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const confirmLogout = () => {
     Alert.alert("Log out", "Are you sure you want to log out?", [
@@ -35,7 +120,14 @@ export default function SecurityScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* HEADER */}
         <TouchableOpacity
           onPress={() => router.back()}
@@ -70,9 +162,80 @@ export default function SecurityScreen() {
               Your account is protected with a password.
             </Text>
 
-            <Text style={styles.unavailable}>
-              Password changes are not available yet.
-            </Text>
+            {passwordChanged && !editingPassword ? (
+              <Text style={styles.successBox}>
+                Your password was updated. Use it the next time you sign in.
+              </Text>
+            ) : null}
+
+            {editingPassword ? (
+              <View style={styles.passwordForm}>
+                <FormField
+                  label="CURRENT PASSWORD"
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  placeholder="••••••"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="current-password"
+                  error={errors.current}
+                />
+                <FormField
+                  label="NEW PASSWORD"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="At least 6 characters"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="new-password"
+                  error={errors.next}
+                />
+                <FormField
+                  label="CONFIRM NEW PASSWORD"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="••••••"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="new-password"
+                  error={errors.confirm}
+                />
+
+                {formError ? (
+                  <Text style={styles.formError}>{formError}</Text>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[styles.button, submitting && styles.buttonDisabled]}
+                  activeOpacity={0.8}
+                  onPress={submitPasswordChange}
+                  disabled={submitting}
+                >
+                  <Text style={styles.buttonText}>
+                    {submitting ? "Please wait…" : "Update password"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={cancelPasswordForm}
+                  disabled={submitting}
+                >
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.outlineButton}
+                activeOpacity={0.7}
+                onPress={openPasswordForm}
+              >
+                <Text style={styles.outlineButtonText}>Change password</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -135,6 +298,7 @@ export default function SecurityScreen() {
           Security settings reflect the features currently available in Keepr.
         </Text>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -220,11 +384,74 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
   },
 
-  unavailable: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: spacing.sm,
-    fontStyle: "italic",
+  flex: {
+    flex: 1,
+  },
+
+  passwordForm: {
+    marginTop: spacing.md,
+  },
+
+  formError: {
+    color: colors.danger,
+    backgroundColor: colors.dangerBg,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    fontSize: 13,
+    marginBottom: spacing.md,
+  },
+
+  successBox: {
+    color: colors.success,
+    backgroundColor: colors.successBg,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    fontSize: 13,
+    marginTop: spacing.md,
+  },
+
+  button: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+  },
+
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+
+  buttonText: {
+    color: colors.white,
+    fontWeight: "700",
+    fontSize: 15,
+  },
+
+  cancelButton: {
+    paddingVertical: spacing.md,
+    alignItems: "center",
+  },
+
+  cancelText: {
+    color: colors.textSecondary,
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
+  outlineButton: {
+    alignSelf: "flex-start",
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+
+  outlineButtonText: {
+    color: colors.primary,
+    fontWeight: "600",
+    fontSize: 14,
   },
 
   statusContainer: {

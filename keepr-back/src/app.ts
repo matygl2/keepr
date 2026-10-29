@@ -54,7 +54,7 @@ export function createApp(options: AppOptions) {
       legacyHeaders: false,
       message: { error: 'Too many attempts. Try again in a few minutes.' },
     });
-    app.use(['/auth/register', '/auth/login'], authLimiter);
+    app.use(['/auth/register', '/auth/login', '/auth/change-password', '/auth/delete-account'], authLimiter);
   }
 
   app.use('/auth', authRouter(config));

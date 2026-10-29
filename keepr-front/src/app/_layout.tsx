@@ -129,8 +129,6 @@ export default function RootLayout() {
     // Sin GestureHandlerRootView los gestos no responden (y no tira ningún error).
     <GestureHandlerRootView style={rootStyles.root}>
       <SafeAreaProvider>
-        {/* Oculta la barra de abajo. Solo existe en Android. */}
-        {Platform.OS === "android" ? <NavigationBar hidden /> : null}
         <AuthProvider>
           <AppGate />
         </AuthProvider>

@@ -1,5 +1,8 @@
 import { router } from "expo-router";
+import { useState } from "react";
 import {
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -8,7 +11,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import FormField from "../../components/FormField";
 import { colors, fonts, radius, spacing } from "../../constants/theme";
+import { useAuth } from "../../context/AuthContext";
 
 type PrivacySectionProps = {
   title: string;
@@ -34,9 +39,52 @@ function PrivacySection({
 }
 
 export default function DataPrivacyScreen() {
+  const { deleteAccount } = useAuth();
+
+  // Formulario de borrado de cuenta (se abre dentro de la tarjeta).
+  const [deleting, setDeleting] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const closeDeleteForm = () => {
+    setDeleting(false);
+    setPassword("");
+    setPasswordError("");
+    setFormError("");
+  };
+
+  const submitDelete = async () => {
+    if (submitting) return;
+    setPasswordError("");
+    setFormError("");
+    if (!password) {
+      setPasswordError("Enter your password to confirm.");
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await deleteAccount(password);
+
+    // Si sale bien, la app cambia sola a la pantalla de inicio de sesión: solo
+    // hay que tocar el estado cuando algo falló.
+    if (!result.ok) {
+      setFormError(result.error);
+      setSubmitting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* BACK */}
         <TouchableOpacity
           style={styles.backButton}
@@ -108,13 +156,72 @@ export default function DataPrivacyScreen() {
           <PrivacySection
             title="Exporting your data"
             description="Data export is not available in this version of Keepr."
-          />
-
-          <PrivacySection
-            title="Deleting your account"
-            description="Account deletion is not available in this version of Keepr."
             isLast
           />
+        </View>
+
+        {/* DELETE ACCOUNT */}
+        <Text style={styles.groupLabel}>DELETE ACCOUNT</Text>
+
+        <View style={styles.card}>
+          <View style={styles.infoRow}>
+            <Text style={styles.sectionTitle}>Deleting your account</Text>
+            <Text style={styles.sectionDescription}>
+              Permanently deletes your Keepr account and everything linked to
+              it: your products, warranties, maintenance history and the photos
+              and documents you uploaded. This cannot be undone.
+            </Text>
+
+            {deleting ? (
+              <View style={styles.deleteForm}>
+                <FormField
+                  label="CONFIRM WITH YOUR PASSWORD"
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••"
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="current-password"
+                  error={passwordError}
+                />
+
+                {formError ? (
+                  <Text style={styles.formError}>{formError}</Text>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[
+                    styles.dangerButton,
+                    submitting && styles.buttonDisabled,
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={submitDelete}
+                  disabled={submitting}
+                >
+                  <Text style={styles.dangerButtonText}>
+                    {submitting ? "Deleting…" : "Delete my account permanently"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={closeDeleteForm}
+                  disabled={submitting}
+                >
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.dangerOutlineButton}
+                activeOpacity={0.7}
+                onPress={() => setDeleting(true)}
+              >
+                <Text style={styles.dangerOutlineText}>Delete account</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* FOOTER */}
@@ -126,11 +233,16 @@ export default function DataPrivacyScreen() {
           </Text>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
@@ -202,6 +314,63 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: colors.border,
+  },
+
+  deleteForm: {
+    marginTop: spacing.md,
+  },
+
+  formError: {
+    color: colors.danger,
+    backgroundColor: colors.dangerBg,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    fontSize: 13,
+    marginBottom: spacing.md,
+  },
+
+  dangerButton: {
+    backgroundColor: colors.danger,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+  },
+
+  dangerButtonText: {
+    color: colors.white,
+    fontWeight: "700",
+    fontSize: 15,
+  },
+
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+
+  cancelButton: {
+    paddingVertical: spacing.md,
+    alignItems: "center",
+  },
+
+  cancelText: {
+    color: colors.textSecondary,
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
+  dangerOutlineButton: {
+    alignSelf: "flex-start",
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+
+  dangerOutlineText: {
+    color: colors.danger,
+    fontWeight: "600",
+    fontSize: 14,
   },
 
   infoBox: {
