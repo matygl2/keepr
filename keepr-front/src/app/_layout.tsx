@@ -107,6 +107,7 @@ function AppGate() {
             <Stack.Screen name="settings/data-privacy" />
             <Stack.Screen name="settings/security" />
             <Stack.Screen name="settings/send-feedback" />
+            <Stack.Screen name="settings/export-data" />
           </Stack>
         </ProductsGate>
       </ProductsProvider>

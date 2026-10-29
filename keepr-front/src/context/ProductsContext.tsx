@@ -5,14 +5,22 @@ import React, {
   useEffect,
   useMemo,
   useState,
-} from 'react';
-import { api, errorMessage } from '../api/client';
-import { toPatchBody } from '../api/productPayload';
-import { removeDocument as removeDocumentRequest, uploadDocument } from '../api/documents';
-import { uploadReceipt } from '../api/receipt';
-import { DocumentType, MaintenanceEntry, NewProductInput, Product } from '../types';
+} from "react";
+import { api, errorMessage } from "../api/client";
+import {
+  removeDocument as removeDocumentRequest,
+  uploadDocument,
+} from "../api/documents";
+import { toPatchBody } from "../api/productPayload";
+import { uploadReceipt } from "../api/receipt";
+import {
+  DocumentType,
+  MaintenanceEntry,
+  NewProductInput,
+  Product,
+} from "../types";
 
-type ProductsStatus = 'loading' | 'ready' | 'error';
+type ProductsStatus = "loading" | "ready" | "error";
 
 interface ProductsContextValue {
   products: Product[];
@@ -20,7 +28,7 @@ interface ProductsContextValue {
   /** Texto del último error al cargar los productos. */
   errorMessage: string;
   /** Vuelve a pedir los productos al servidor. */
-  reload: () => Promise<void>;
+  reload: () => Promise<Product[]>;
   /** Crea el producto en el servidor y devuelve el producto guardado (con su id). */
   addProduct: (input: NewProductInput) => Promise<Product>;
   /** Edita campos del producto. `calendarEventId: undefined` lo borra. */
@@ -29,13 +37,22 @@ interface ProductsContextValue {
   /** Sube (o reemplaza) la foto del recibo de un producto ya guardado, a partir de su ubicación. */
   attachReceipt: (id: string, photoUri: string) => Promise<Product>;
   /** Sube (o reemplaza) la foto de un documento. `image` es un JPEG en base64. */
-  attachDocument: (id: string, type: DocumentType, image: string) => Promise<Product>;
+  attachDocument: (
+    id: string,
+    type: DocumentType,
+    image: string,
+  ) => Promise<Product>;
   /** Quita la foto de un documento. */
   removeDocument: (id: string, type: DocumentType) => Promise<Product>;
-  addMaintenance: (id: string, entry: Omit<MaintenanceEntry, 'id'>) => Promise<Product>;
+  addMaintenance: (
+    id: string,
+    entry: Omit<MaintenanceEntry, "id">,
+  ) => Promise<Product>;
 }
 
-const ProductsContext = createContext<ProductsContextValue | undefined>(undefined);
+const ProductsContext = createContext<ProductsContextValue | undefined>(
+  undefined,
+);
 
 /**
  * Productos del usuario logueado, guardados en el servidor. Montalo con
@@ -43,23 +60,30 @@ const ProductsContext = createContext<ProductsContextValue | undefined>(undefine
  */
 export function ProductsProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
-  const [status, setStatus] = useState<ProductsStatus>('loading');
-  const [loadError, setLoadError] = useState('');
+  const [status, setStatus] = useState<ProductsStatus>("loading");
+  const [loadError, setLoadError] = useState("");
 
-  const reload = useCallback(async () => {
-    setStatus('loading');
+  const reload = useCallback(async (): Promise<Product[]> => {
+    setStatus("loading");
+
     try {
-      const res = await api.get<{ products: Product[] }>('/products');
+      const res = await api.get<{ products: Product[] }>("/products");
+
       setProducts(res.products);
-      setStatus('ready');
+      setLoadError("");
+      setStatus("ready");
+
+      return res.products;
     } catch (err) {
       setLoadError(errorMessage(err));
-      setStatus('error');
+      setStatus("error");
+
+      throw err;
     }
   }, []);
 
   useEffect(() => {
-    void reload();
+    void reload().catch(() => {});
   }, [reload]);
 
   const replaceProduct = useCallback((updated: Product) => {
@@ -67,18 +91,24 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addProduct = useCallback(async (input: NewProductInput) => {
-    const { product } = await api.post<{ product: Product }>('/products', input);
+    const { product } = await api.post<{ product: Product }>(
+      "/products",
+      input,
+    );
     setProducts((prev) => [product, ...prev]);
     return product;
   }, []);
 
   const updateProduct = useCallback(
     async (id: string, patch: Partial<Product>) => {
-      const { product } = await api.patch<{ product: Product }>(`/products/${id}`, toPatchBody(patch));
+      const { product } = await api.patch<{ product: Product }>(
+        `/products/${id}`,
+        toPatchBody(patch),
+      );
       replaceProduct(product);
       return product;
     },
-    [replaceProduct]
+    [replaceProduct],
   );
 
   const removeProduct = useCallback(async (id: string) => {
@@ -92,7 +122,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       replaceProduct(product);
       return product;
     },
-    [replaceProduct]
+    [replaceProduct],
   );
 
   const attachDocument = useCallback(
@@ -101,7 +131,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       replaceProduct(product);
       return product;
     },
-    [replaceProduct]
+    [replaceProduct],
   );
 
   const removeDocument = useCallback(
@@ -110,16 +140,19 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       replaceProduct(product);
       return product;
     },
-    [replaceProduct]
+    [replaceProduct],
   );
 
   const addMaintenance = useCallback(
-    async (id: string, entry: Omit<MaintenanceEntry, 'id'>) => {
-      const { product } = await api.post<{ product: Product }>(`/products/${id}/maintenance`, entry);
+    async (id: string, entry: Omit<MaintenanceEntry, "id">) => {
+      const { product } = await api.post<{ product: Product }>(
+        `/products/${id}/maintenance`,
+        entry,
+      );
       replaceProduct(product);
       return product;
     },
-    [replaceProduct]
+    [replaceProduct],
   );
 
   const value = useMemo(
@@ -148,18 +181,20 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       attachDocument,
       removeDocument,
       addMaintenance,
-    ]
+    ],
   );
 
   return (
-    <ProductsContext.Provider value={value}>{children}</ProductsContext.Provider>
+    <ProductsContext.Provider value={value}>
+      {children}
+    </ProductsContext.Provider>
   );
 }
 
 export function useProducts() {
   const ctx = useContext(ProductsContext);
   if (!ctx) {
-    throw new Error('useProducts must be used within a ProductsProvider');
+    throw new Error("useProducts must be used within a ProductsProvider");
   }
   return ctx;
 }
