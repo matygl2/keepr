@@ -102,7 +102,7 @@ export default function ProfileScreen() {
         <View style={styles.card}>
           <SettingsRow
             label="Help & FAQ"
-            onPress={() => notImplemented("Help & FAQ")}
+            onPress={() => router.push("/settings/help")}
           />
 
           <SettingsRow

@@ -2,7 +2,7 @@ import { Product } from '../types';
 
 /**
  * Arma el cuerpo del PATCH /products/:id a partir de los cambios.
- * - Nunca manda `id`, `maintenanceHistory`, `documents` ni `receiptPhotoId` (el servidor no los
+ * - Nunca manda `id`, `maintenanceHistory`, `documents`, `documentKinds` ni `receiptPhotoId` (el servidor no los
  *   acepta acá; las fotos se suben aparte con PUT /products/:id/documents/:tipo).
  * - `calendarEventId: undefined` se manda como `null`, que es como el servidor lo borra
  *   (JSON ignora los `undefined`, así que sin esto el campo nunca se limpiaría).
@@ -14,6 +14,7 @@ export function toPatchBody(patch: Partial<Product>): Record<string, unknown> {
       key === 'id' ||
       key === 'maintenanceHistory' ||
       key === 'documents' ||
+      key === 'documentKinds' ||
       key === 'receiptPhotoId'
     ) {
       continue;

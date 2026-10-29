@@ -37,3 +37,15 @@ export function isSameDay(a: Date, b: Date): boolean {
     a.getDate() === b.getDate()
   );
 }
+
+// "YYYY-MM-DD". new Date('YYYY-MM-DD') esto porque sino en Argentina da un día antes.
+export function parseISODate(value: string): Date {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+// Fecha como "YYYY-MM-DD" (toISOString() pasa a UTC y de noche da el día siguiente).
+export function toLocalISODate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}

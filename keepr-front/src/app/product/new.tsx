@@ -1,13 +1,11 @@
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -15,11 +13,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { errorMessage } from '../../api/client';
 import FormField from '../../components/FormField';
+import NewProductDocuments, {
+  EMPTY_DOCUMENTS,
+  PendingDocuments,
+} from '../../components/NewProductDocuments';
 import { colors, fonts, radius, spacing } from '../../constants/theme';
 import { useProducts } from '../../context/ProductsContext';
-import { formatDate } from '../../data/mockData';
-import { Category, Product } from '../../types';
+import { formatDate, getProductById } from '../../data/mockData';
+import { Category, DocumentType, Product } from '../../types';
 import { addMonthsISO, isValidISODate, localTodayISO } from '../../utils/validation';
+import { DOCUMENT_TYPES, readFileBase64 } from '../../api/documents';
 import { resolvePhotoUri } from '../../api/receipt';
 
 const CATEGORIES: Category[] = ['Tech', 'Home', 'Fashion', 'Other'];
@@ -42,27 +45,56 @@ const DURATIONS = [
 type DurationKey = (typeof DURATIONS)[number]['key'];
 type FieldName = 'name' | 'store' | 'purchaseDate' | 'price' | 'customExpiry';
 
+/** La duración de la lista que da justo esa fecha de vencimiento, o 'custom'. */
+function durationFor(purchaseDate: string, expiryDate: string): DurationKey {
+  const match = DURATIONS.find(
+    (d) => d.months > 0 && addMonthsISO(purchaseDate, d.months) === expiryDate
+  );
+  return match ? match.key : 'custom';
+}
+
+/**
+ * Formulario para agregar un producto. También se usa para editarlo:
+ * /product/[id]/edit abre esta misma pantalla con el producto ya cargado.
+ */
 export default function NewProductScreen() {
   const router = useRouter();
-  const { addProduct, attachReceipt } = useProducts();
+  const { products, addProduct, updateProduct, attachReceipt, attachDocument } = useProducts();
   // Si venís de sacar una foto, llega su ubicación temporal en el teléfono.
-  const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
-  const [photo, setPhoto] = useState<string | null>(photoUri ? resolvePhotoUri(photoUri) : null);
+  // Si venís de "Edit", llega el id del producto a editar.
+  const { photoUri, id } = useLocalSearchParams<{ photoUri?: string; id?: string }>();
+  const editing = id ? getProductById(products, id) : undefined;
+  // Recibo, garantía y manual: si venís de la cámara, el recibo ya trae la foto.
+  const [documents, setDocuments] = useState<PendingDocuments>(() =>
+    photoUri
+      ? {
+          ...EMPTY_DOCUMENTS,
+          receipt: { has: true, file: { kind: 'camera', uri: resolvePhotoUri(photoUri) } },
+        }
+      : EMPTY_DOCUMENTS
+  );
 
-  const [name, setName] = useState('');
-  const [brand, setBrand] = useState('');
-  const [model, setModel] = useState('');
-  const [category, setCategory] = useState<Category>('Tech');
-  const [subCategory, setSubCategory] = useState('');
-  const [store, setStore] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(localTodayISO());
-  const [price, setPrice] = useState('');
-  const [duration, setDuration] = useState<DurationKey>('1y');
-  const [customExpiry, setCustomExpiry] = useState('');
-  const [serialNumber, setSerialNumber] = useState('');
-  const [docs, setDocs] = useState({ receipt: Boolean(photoUri), warranty: false, manual: false });
+  // Al editar, cada campo arranca con el valor que ya tiene el producto.
+  const [name, setName] = useState(editing?.name ?? '');
+  const [brand, setBrand] = useState(editing?.brand ?? '');
+  const [model, setModel] = useState(editing?.model ?? '');
+  const [category, setCategory] = useState<Category>(editing?.category ?? 'Tech');
+  const [subCategory, setSubCategory] = useState(editing?.subCategory ?? '');
+  const [store, setStore] = useState(editing?.store ?? '');
+  const [purchaseDate, setPurchaseDate] = useState(editing?.purchaseDate ?? localTodayISO());
+  const [price, setPrice] = useState(editing ? String(editing.price) : '');
+  const [duration, setDuration] = useState<DurationKey>(
+    editing ? durationFor(editing.purchaseDate, editing.warrantyExpiryDate) : '1y'
+  );
+  const [customExpiry, setCustomExpiry] = useState(editing?.warrantyExpiryDate ?? '');
+  const [serialNumber, setSerialNumber] = useState(
+    editing && editing.serialNumber !== 'N/A' ? editing.serialNumber : ''
+  );
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [saving, setSaving] = useState(false);
+  // Evita guardar dos veces con un doble toque: el estado tarda un render en
+  // actualizarse, el ref cambia al instante.
+  const savingRef = useRef(false);
 
   const selectedDuration = DURATIONS.find((d) => d.key === duration)!;
   const purchaseOk = isValidISODate(purchaseDate);
@@ -102,13 +134,39 @@ export default function NewProductScreen() {
   };
 
   const handleSave = async () => {
-    if (saving) return;
+    if (savingRef.current) return;
     const found = validate();
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
     const priceNumber = Number(price);
+    savingRef.current = true;
     setSaving(true);
+
+    // Editar: PATCH con los datos del formulario y volver al detalle.
+    if (editing) {
+      try {
+        await updateProduct(editing.id, {
+          name: name.trim(),
+          brand: brand.trim(),
+          model: model.trim(),
+          category,
+          subCategory: subCategory.trim() || category,
+          icon: category === editing.category ? editing.icon : CATEGORY_ICONS[category],
+          store: store.trim(),
+          purchaseDate,
+          price: priceNumber,
+          warrantyExpiryDate: expiryDate,
+          serialNumber: serialNumber.trim() || 'N/A',
+        });
+        router.back();
+      } catch (err) {
+        Alert.alert('Could not save the changes', errorMessage(err));
+        savingRef.current = false;
+        setSaving(false);
+      }
+      return;
+    }
 
     let created: Product;
     try {
@@ -125,42 +183,58 @@ export default function NewProductScreen() {
         price: priceNumber,
         warrantyExpiryDate: expiryDate,
         serialNumber: serialNumber.trim() || 'N/A',
-        documentation: [
-          { name: 'Receipt', uploaded: docs.receipt || photo !== null },
-          { name: 'Warranty document', uploaded: docs.warranty },
-          { name: 'Manual', uploaded: docs.manual },
-        ],
+        documentation: DOCUMENT_TYPES.map(({ type, label }) => ({
+          name: label,
+          uploaded: documents[type].has,
+        })),
       });
     } catch (err) {
       Alert.alert('Could not save', errorMessage(err));
+      savingRef.current = false;
       setSaving(false);
       return;
     }
 
     const goToProduct = () => router.replace(`/product/${created.id}`);
-    if (!photo) {
-      goToProduct();
-      return;
-    }
 
-    // El producto ya está guardado: si la foto falla, se puede reintentar o seguir sin ella.
-    const uploadPhoto = async () => {
-      try {
-        await attachReceipt(created.id, photo);
-        goToProduct();
-      } catch (err) {
-        Alert.alert(
-          'Product saved, but the photo was not uploaded',
-          errorMessage(err),
-          [
-            { text: 'Skip', style: 'cancel', onPress: goToProduct },
-            { text: 'Try again', onPress: () => void uploadPhoto() },
-          ],
-          { cancelable: false }
-        );
-      }
+    // Sube un documento adjunto al producto recién creado.
+    const upload = async (type: DocumentType) => {
+      const file = documents[type].file;
+      if (!file) return;
+      if (file.kind === 'camera') await attachReceipt(created.id, file.uri);
+      else if (file.kind === 'photo') await attachDocument(created.id, type, file.base64);
+      else await attachDocument(created.id, type, await readFileBase64(file.uri));
     };
-    await uploadPhoto();
+
+    // El producto ya está guardado: si algún archivo falla, se puede reintentar o seguir sin él.
+    const uploadAll = async (types: DocumentType[]) => {
+      const failed: DocumentType[] = [];
+      for (const type of types) {
+        try {
+          await upload(type);
+        } catch {
+          failed.push(type);
+        }
+      }
+      if (failed.length === 0) {
+        goToProduct();
+        return;
+      }
+      const names = failed
+        .map((type) => DOCUMENT_TYPES.find((d) => d.type === type)!.label.toLowerCase())
+        .join(', ');
+      Alert.alert(
+        'Product saved',
+        `Some files could not be uploaded (${names}). You can add them later from the product.`,
+        [
+          { text: 'Skip', style: 'cancel', onPress: goToProduct },
+          { text: 'Try again', onPress: () => void uploadAll(failed) },
+        ],
+        { cancelable: false }
+      );
+    };
+
+    await uploadAll(DOCUMENT_TYPES.map((d) => d.type).filter((type) => documents[type].file));
   };
 
   return (
@@ -179,23 +253,12 @@ export default function NewProductScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Add a product</Text>
+          <Text style={styles.title}>{editing ? 'Edit product' : 'Add a product'}</Text>
           <Text style={styles.subtitle}>
-            Enter the purchase details and Keepr will track the warranty for you.
+            {editing
+              ? 'Update the details. Documents are managed from the product page.'
+              : 'Enter the purchase details and Keepr will track the warranty for you.'}
           </Text>
-
-          {photo ? (
-            <View style={styles.photoCard}>
-              <Image source={{ uri: photo }} style={styles.photoThumb} contentFit="cover" />
-              <View style={styles.photoInfo}>
-                <Text style={styles.photoTitle}>Photo attached</Text>
-                <Text style={styles.photoText}>It will be saved with your product.</Text>
-                <TouchableOpacity onPress={() => setPhoto(null)} hitSlop={8}>
-                  <Text style={styles.photoRemove}>Remove photo</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : null}
 
           <FormField
             label="PRODUCT NAME *"
@@ -310,29 +373,12 @@ export default function NewProductScreen() {
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>DOCUMENTS YOU HAVE</Text>
-          <View style={styles.docsCard}>
-            {(
-              [
-                ['receipt', 'Receipt'],
-                ['warranty', 'Warranty document'],
-                ['manual', 'Manual'],
-              ] as const
-            ).map(([key, label], index, all) => (
-              <View
-                key={key}
-                style={[styles.docRow, index < all.length - 1 && styles.docRowBorder]}
-              >
-                <Text style={styles.docLabel}>{label}</Text>
-                <Switch
-                  value={docs[key]}
-                  onValueChange={(value) => setDocs((prev) => ({ ...prev, [key]: value }))}
-                  trackColor={{ true: colors.secondaryLight, false: colors.border }}
-                  thumbColor={colors.white}
-                />
-              </View>
-            ))}
-          </View>
+          {editing ? null : (
+            <>
+              <Text style={styles.label}>DOCUMENTS</Text>
+              <NewProductDocuments value={documents} onChange={setDocuments} />
+            </>
+          )}
 
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -340,7 +386,9 @@ export default function NewProductScreen() {
             onPress={handleSave}
             disabled={saving}
           >
-            <Text style={styles.saveButtonText}>{saving ? 'Saving…' : 'Save product'}</Text>
+            <Text style={styles.saveButtonText}>
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Save product'}
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -425,65 +473,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
-  docsCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  docRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  docRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  docLabel: {
-    fontSize: 15,
-    color: colors.textPrimary,
-  },
   saveButton: {
     backgroundColor: colors.primary,
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     alignItems: 'center',
-  },
-  photoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  photoThumb: {
-    width: 72,
-    height: 96,
-    borderRadius: radius.sm,
-    backgroundColor: colors.iconBg,
-  },
-  photoInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  photoTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  photoText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  photoRemove: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primary,
   },
   saveButtonDisabled: {
     opacity: 0.6,

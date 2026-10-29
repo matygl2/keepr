@@ -1,5 +1,8 @@
-/** Los tres documentos de un producto, cada uno con su foto. */
+/** Los tres documentos de un producto, cada uno con su foto o PDF. */
 export type DocumentType = 'receipt' | 'warranty' | 'manual';
+
+/** Qué hay guardado en cada documento: una foto o un PDF. */
+export type DocumentKind = 'image' | 'pdf';
 
 export type Category = 'Tech' | 'Home' | 'Fashion' | 'Other';
 
@@ -38,6 +41,7 @@ export interface Product {
   calendarEventId?: string;
   /** Id de la foto de cada documento (si la tiene). Cambia al reemplazar la foto. */
   documents?: Partial<Record<DocumentType, string>>;
+  documentKinds?: Partial<Record<DocumentType, DocumentKind>>;
   /** Anterior a `documents`: es lo mismo que `documents.receipt`. */
   receiptPhotoId?: string;
 }
@@ -48,7 +52,7 @@ export interface Product {
  */
 export type NewProductInput = Omit<
   Product,
-  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId' | 'documents'
+  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId' | 'documents' | 'documentKinds'
 > & {
   maintenanceHistory?: Omit<MaintenanceEntry, 'id'>[];
 };

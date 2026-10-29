@@ -38,7 +38,13 @@ interface ProductRow {
 }
 
 function photoId(fileName: string | null | undefined): string | undefined {
-  return fileName ? fileName.replace(/\.jpg$/, '') : undefined;
+  return fileName ? fileName.replace(/\.(jpg|pdf)$/, '') : undefined;
+}
+
+/** 'pdf' o 'image' según el archivo guardado, para que la app sepa cómo mostrarlo. */
+function kindOf(fileName: string | null | undefined): 'image' | 'pdf' | undefined {
+  if (!fileName) return undefined;
+  return fileName.endsWith('.pdf') ? 'pdf' : 'image';
 }
 
 /** Misma forma que el tipo `Product` de la app (sin userId ni createdAt). */
@@ -64,6 +70,11 @@ export function toProduct(p: ProductRow) {
       receipt: photoId(p.receiptImage),
       warranty: photoId(p.warrantyImage),
       manual: photoId(p.manualImage),
+    },
+    documentKinds: {
+      receipt: kindOf(p.receiptImage),
+      warranty: kindOf(p.warrantyImage),
+      manual: kindOf(p.manualImage),
     },
     // Anterior a `documents`: lo mismo que documents.receipt.
     receiptPhotoId: photoId(p.receiptImage),

@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -80,9 +79,8 @@ export default function MaintenanceHistoryScreen() {
 
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() =>
-            Alert.alert('Add Maintenance', 'This is a UI demo action.')
-          }
+          onPress={() => router.push(`/product/${product.id}/add-maintenance`)}
+          accessibilityRole="button"
         >
           <Text style={styles.addButtonText}>+  Add Maintenance</Text>
         </TouchableOpacity>

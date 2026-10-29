@@ -5,8 +5,9 @@ import {
   DOCUMENT_COLUMNS,
   DOCUMENT_NAMES,
   DocumentType,
-  decodeJpeg,
+  decodeDocument,
   deletePhoto,
+  documentContentType,
   isDocumentType,
   photoFilePath,
   PHOTO_JSON_LIMIT,
@@ -163,15 +164,15 @@ export function productsRouter(config: AppConfig) {
     );
   }
 
-  // Sube (o reemplaza) la foto de un documento. Cuerpo: { "image": "<base64 de un JPEG>" }.
+  // Sube (o reemplaza) la foto o el PDF de un documento. Cuerpo: { "image": "<base64 de un JPEG o PDF>" }.
   const upload = async (req: express.Request<DocParams>, res: express.Response) => {
     const type = documentType(req);
     const column = DOCUMENT_COLUMNS[type];
     const { image } = parse(receiptUploadSchema, req.body);
-    const bytes = decodeJpeg(image);
+    const { bytes, extension } = decodeDocument(image);
     const current = await getOwned(req.params.id, res.locals.userId);
 
-    const fileName = await savePhoto(config.uploadsDir, bytes);
+    const fileName = await savePhoto(config.uploadsDir, bytes, extension);
     try {
       const updated = await db.product.update({
         where: { id: current.id },
@@ -208,7 +209,7 @@ export function productsRouter(config: AppConfig) {
 
     res.set('Cache-Control', 'private, max-age=3600');
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.type('image/jpeg');
+    res.type(documentContentType(file));
     res.sendFile(file, (err) => {
       if (err && !res.headersSent) next(new HttpError(404, 'Photo not found.'));
     });

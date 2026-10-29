@@ -67,6 +67,8 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
     // Un JPEG mínimo: lo que se valida son los primeros bytes (FF D8 FF) y el tamaño.
     const jpeg = (fill = 7) =>
       Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]), Buffer.from('JFIF\0'), Buffer.alloc(200, fill), Buffer.from([0xff, 0xd9])]);
+    // Un PDF mínimo: alcanza con que empiece con "%PDF-".
+    const pdf = () => Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n', 'latin1');
 
     const validProduct = {
       name: 'HP Victus 16',
@@ -272,7 +274,7 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
       const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(100)]);
       const notJpeg = await put(png.toString('base64'));
       assert.equal(notJpeg.status, 400);
-      assert.deepEqual(notJpeg.json.fields.image, ['Only JPEG images are accepted.']);
+      assert.deepEqual(notJpeg.json.fields.image, ['Only JPEG images or PDF files are accepted.']);
 
       const tooBig = Buffer.concat([jpeg(), Buffer.alloc(5 * 1024 * 1024)]); // > 5 MB
       const big = await put(tooBig.toString('base64'));
@@ -282,6 +284,34 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
       // Un cuerpo de más de 7 MB ni siquiera se lee
       assert.equal((await put('A'.repeat(8 * 1024 * 1024))).status, 413);
       assert.equal(filesInUploads(), before); // nada quedó guardado
+    });
+
+    it('accepts a PDF receipt and serves it as a PDF', async () => {
+      const { token } = await register('receipt-pdf@email.com');
+      const id = (await call('POST', '/products', { token, body: validProduct })).json.product.id;
+
+      const file = pdf();
+      const up = await call('PUT', `/products/${id}/receipt`, { token, body: { image: file.toString('base64') } });
+      assert.equal(up.status, 200);
+      assert.equal(up.json.product.documentKinds.receipt, 'pdf');
+      assert.match(up.json.product.receiptPhotoId, /^[0-9a-f-]{36}$/);
+      assert.equal(JSON.stringify(up.json).includes('.pdf'), false); // no se filtra el nombre del archivo
+
+      const got = await rawGet(`/products/${id}/receipt`, token);
+      assert.equal(got.status, 200);
+      assert.match(got.type ?? '', /^application\/pdf/);
+      assert.ok(got.bytes.equals(file));
+
+      const photo = await call('PUT', `/products/${id}/receipt`, { token, body: { image: jpeg().toString('base64') } });
+      assert.equal(photo.json.product.documentKinds.receipt, 'image');
+
+      // Los otros documentos también aceptan PDF
+      const manual = await call('PUT', `/products/${id}/documents/manual`, { token, body: { image: file.toString('base64') } });
+      assert.equal(manual.status, 200);
+      assert.equal(manual.json.product.documentKinds.manual, 'pdf');
+      const gotManual = await rawGet(`/products/${id}/documents/manual`, token);
+      assert.match(gotManual.type ?? '', /^application\/pdf/);
+      assert.ok(gotManual.bytes.equals(file));
     });
 
     it('replaces the photo (deleting the old file) and deletes it together with the product', async () => {

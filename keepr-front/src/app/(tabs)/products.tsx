@@ -4,6 +4,7 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CategoryFilter from '../../components/CategoryFilter';
 import ProductCard from '../../components/ProductCard';
+import SwipeToDeleteRow from '../../components/SwipeToDeleteRow';
 import { colors, fonts, radius, spacing } from '../../constants/theme';
 import { useProducts } from '../../context/ProductsContext';
 
@@ -22,7 +23,11 @@ export default function ProductsScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ProductCard product={item} />}
+        renderItem={({ item }) => (
+          <SwipeToDeleteRow product={item}>
+            <ProductCard product={item} />
+          </SwipeToDeleteRow>
+        )}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View>

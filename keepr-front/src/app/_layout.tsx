@@ -6,7 +6,8 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { Platform, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import AuthScreen from "../components/AuthScreen";
@@ -98,10 +99,13 @@ function AppGate() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="product/new" />
             <Stack.Screen name="product/[id]/index" />
+            <Stack.Screen name="product/[id]/edit" />
             <Stack.Screen name="product/[id]/maintenance" />
+            <Stack.Screen name="product/[id]/add-maintenance" />
 
             {/* Pantalla de configuración de notificaciones */}
             <Stack.Screen name="settings/notifications" />
+            <Stack.Screen name="settings/help" />
           </Stack>
         </ProductsGate>
       </ProductsProvider>
@@ -120,12 +124,19 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      {/* Oculta la barra de abajo. Solo existe en Android. */}
-      {Platform.OS === 'android' ? <NavigationBar hidden /> : null}
-      <AuthProvider>
-        <AppGate />
-      </AuthProvider>
-    </SafeAreaProvider>
+    // Sin GestureHandlerRootView los gestos no responden (y no tira ningún error).
+    <GestureHandlerRootView style={rootStyles.root}>
+      <SafeAreaProvider>
+        {/* Oculta la barra de abajo. Solo existe en Android. */}
+        {Platform.OS === 'android' ? <NavigationBar hidden /> : null}
+        <AuthProvider>
+          <AppGate />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const rootStyles = StyleSheet.create({
+  root: { flex: 1 },
+});
