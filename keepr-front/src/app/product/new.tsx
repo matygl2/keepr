@@ -1,15 +1,11 @@
-import * as DocumentPicker from 'expo-document-picker';
-import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -17,18 +13,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { errorMessage } from '../../api/client';
 import FormField from '../../components/FormField';
+import NewProductDocuments, {
+  EMPTY_DOCUMENTS,
+  PendingDocuments,
+} from '../../components/NewProductDocuments';
 import { colors, fonts, radius, spacing } from '../../constants/theme';
 import { useProducts } from '../../context/ProductsContext';
 import { formatDate } from '../../data/mockData';
-import { Category, Product } from '../../types';
+import { Category, DocumentType, Product } from '../../types';
 import { addMonthsISO, isValidISODate, localTodayISO } from '../../utils/validation';
-import { readFileBase64 } from '../../api/documents';
+import { DOCUMENT_TYPES, readFileBase64 } from '../../api/documents';
 import { resolvePhotoUri } from '../../api/receipt';
 
 const CATEGORIES: Category[] = ['Tech', 'Home', 'Fashion', 'Other'];
-
-/** Mismo límite que el servidor (5 MB). */
-const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
 
 const CATEGORY_ICONS: Record<Category, string> = {
   Tech: '📱',
@@ -53,9 +50,15 @@ export default function NewProductScreen() {
   const { addProduct, attachReceipt, attachDocument } = useProducts();
   // Si venís de sacar una foto, llega su ubicación temporal en el teléfono.
   const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
-  const [photo, setPhoto] = useState<string | null>(photoUri ? resolvePhotoUri(photoUri) : null);
-  // El recibo puede ser una foto (cámara o galería) o un PDF, nunca los dos.
-  const [pdf, setPdf] = useState<{ uri: string; name: string } | null>(null);
+  // Recibo, garantía y manual: si venís de la cámara, el recibo ya trae la foto.
+  const [documents, setDocuments] = useState<PendingDocuments>(() =>
+    photoUri
+      ? {
+          ...EMPTY_DOCUMENTS,
+          receipt: { has: true, file: { kind: 'camera', uri: resolvePhotoUri(photoUri) } },
+        }
+      : EMPTY_DOCUMENTS
+  );
 
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
@@ -68,9 +71,11 @@ export default function NewProductScreen() {
   const [duration, setDuration] = useState<DurationKey>('1y');
   const [customExpiry, setCustomExpiry] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
-  const [docs, setDocs] = useState({ warranty: false, manual: false });
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [saving, setSaving] = useState(false);
+  // Evita guardar dos veces con un doble toque: el estado tarda un render en
+  // actualizarse, el ref cambia al instante.
+  const savingRef = useRef(false);
 
   const selectedDuration = DURATIONS.find((d) => d.key === duration)!;
   const purchaseOk = isValidISODate(purchaseDate);
@@ -109,35 +114,14 @@ export default function NewProductScreen() {
     return next;
   };
 
-  const pickFromGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 1 });
-    if (result.canceled) return;
-    setPdf(null);
-    setPhoto(result.assets[0].uri);
-  };
-
-  const pickPdf = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: 'application/pdf',
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    if (asset.size !== undefined && asset.size > MAX_RECEIPT_BYTES) {
-      Alert.alert('File too large', 'The PDF must be 5 MB or smaller.');
-      return;
-    }
-    setPhoto(null);
-    setPdf({ uri: asset.uri, name: asset.name });
-  };
-
   const handleSave = async () => {
-    if (saving) return;
+    if (savingRef.current) return;
     const found = validate();
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
     const priceNumber = Number(price);
+    savingRef.current = true;
     setSaving(true);
 
     let created: Product;
@@ -155,48 +139,58 @@ export default function NewProductScreen() {
         price: priceNumber,
         warrantyExpiryDate: expiryDate,
         serialNumber: serialNumber.trim() || 'N/A',
-        documentation: [
-          { name: 'Receipt', uploaded: photo !== null || pdf !== null },
-          { name: 'Warranty document', uploaded: docs.warranty },
-          { name: 'Manual', uploaded: docs.manual },
-        ],
+        documentation: DOCUMENT_TYPES.map(({ type, label }) => ({
+          name: label,
+          uploaded: documents[type].has,
+        })),
       });
     } catch (err) {
       Alert.alert('Could not save', errorMessage(err));
+      savingRef.current = false;
       setSaving(false);
       return;
     }
 
     const goToProduct = () => router.replace(`/product/${created.id}`);
-    const attach = photo
-      ? () => attachReceipt(created.id, photo)
-      : pdf
-        ? async () => attachDocument(created.id, 'receipt', await readFileBase64(pdf.uri))
-        : null;
-    if (!attach) {
-      goToProduct();
-      return;
-    }
 
-    // El producto ya está guardado: si el recibo falla, se puede reintentar o seguir sin él.
-    const uploadReceiptFile = async () => {
-      try {
-        await attach();
-        goToProduct();
-      } catch (err) {
-        const detail = err instanceof Error && err.name !== 'ApiError' ? err.message : errorMessage(err);
-        Alert.alert(
-          'Product saved, but the receipt was not uploaded',
-          detail,
-          [
-            { text: 'Skip', style: 'cancel', onPress: goToProduct },
-            { text: 'Try again', onPress: () => void uploadReceiptFile() },
-          ],
-          { cancelable: false }
-        );
-      }
+    // Sube un documento adjunto al producto recién creado.
+    const upload = async (type: DocumentType) => {
+      const file = documents[type].file;
+      if (!file) return;
+      if (file.kind === 'camera') await attachReceipt(created.id, file.uri);
+      else if (file.kind === 'photo') await attachDocument(created.id, type, file.base64);
+      else await attachDocument(created.id, type, await readFileBase64(file.uri));
     };
-    await uploadReceiptFile();
+
+    // El producto ya está guardado: si algún archivo falla, se puede reintentar o seguir sin él.
+    const uploadAll = async (types: DocumentType[]) => {
+      const failed: DocumentType[] = [];
+      for (const type of types) {
+        try {
+          await upload(type);
+        } catch {
+          failed.push(type);
+        }
+      }
+      if (failed.length === 0) {
+        goToProduct();
+        return;
+      }
+      const names = failed
+        .map((type) => DOCUMENT_TYPES.find((d) => d.type === type)!.label.toLowerCase())
+        .join(', ');
+      Alert.alert(
+        'Product saved',
+        `Some files could not be uploaded (${names}). You can add them later from the product.`,
+        [
+          { text: 'Skip', style: 'cancel', onPress: goToProduct },
+          { text: 'Try again', onPress: () => void uploadAll(failed) },
+        ],
+        { cancelable: false }
+      );
+    };
+
+    await uploadAll(DOCUMENT_TYPES.map((d) => d.type).filter((type) => documents[type].file));
   };
 
   return (
@@ -219,54 +213,6 @@ export default function NewProductScreen() {
           <Text style={styles.subtitle}>
             Enter the purchase details and Keepr will track the warranty for you.
           </Text>
-
-          <Text style={styles.label}>RECEIPT</Text>
-          {photo ? (
-            <View style={styles.photoCard}>
-              <Image source={{ uri: photo }} style={styles.photoThumb} contentFit="cover" />
-              <View style={styles.photoInfo}>
-                <Text style={styles.photoTitle}>Photo attached</Text>
-                <Text style={styles.photoText}>It will be saved with your product.</Text>
-                <TouchableOpacity onPress={() => setPhoto(null)} hitSlop={8}>
-                  <Text style={styles.photoRemove}>Remove photo</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : pdf ? (
-            <View style={styles.photoCard}>
-              <View style={styles.pdfThumb}>
-                <Text style={styles.pdfThumbIcon}>📄</Text>
-              </View>
-              <View style={styles.photoInfo}>
-                <Text style={styles.photoTitle} numberOfLines={1}>
-                  {pdf.name}
-                </Text>
-                <Text style={styles.photoText}>It will be saved with your product.</Text>
-                <TouchableOpacity onPress={() => setPdf(null)} hitSlop={8}>
-                  <Text style={styles.photoRemove}>Remove PDF</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.attachRow}>
-              <TouchableOpacity
-                style={styles.attachButton}
-                onPress={pickFromGallery}
-                accessibilityRole="button"
-                accessibilityLabel="Attach a receipt photo from the gallery"
-              >
-                <Text style={styles.attachButtonText}>🖼 Gallery</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.attachButton}
-                onPress={pickPdf}
-                accessibilityRole="button"
-                accessibilityLabel="Attach a receipt PDF"
-              >
-                <Text style={styles.attachButtonText}>📎 PDF</Text>
-              </TouchableOpacity>
-            </View>
-          )}
 
           <FormField
             label="PRODUCT NAME *"
@@ -381,28 +327,8 @@ export default function NewProductScreen() {
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>OTHER DOCUMENTS</Text>
-          <View style={styles.docsCard}>
-            {(
-              [
-                ['warranty', 'I have the warranty document'],
-                ['manual', 'I have the manual'],
-              ] as const
-            ).map(([key, label], index, all) => (
-              <View
-                key={key}
-                style={[styles.docRow, index < all.length - 1 && styles.docRowBorder]}
-              >
-                <Text style={styles.docLabel}>{label}</Text>
-                <Switch
-                  value={docs[key]}
-                  onValueChange={(value) => setDocs((prev) => ({ ...prev, [key]: value }))}
-                  trackColor={{ true: colors.secondaryLight, false: colors.border }}
-                  thumbColor={colors.white}
-                />
-              </View>
-            ))}
-          </View>
+          <Text style={styles.label}>DOCUMENTS</Text>
+          <NewProductDocuments value={documents} onChange={setDocuments} />
 
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -495,96 +421,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
-  docsCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  docRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  docRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  docLabel: {
-    fontSize: 15,
-    color: colors.textPrimary,
-  },
   saveButton: {
     backgroundColor: colors.primary,
     borderRadius: radius.pill,
     paddingVertical: spacing.md,
     alignItems: 'center',
-  },
-  photoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  photoThumb: {
-    width: 72,
-    height: 96,
-    borderRadius: radius.sm,
-    backgroundColor: colors.iconBg,
-  },
-  photoInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  photoTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  photoText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  pdfThumb: {
-    width: 72,
-    height: 96,
-    borderRadius: radius.sm,
-    backgroundColor: colors.iconBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pdfThumbIcon: {
-    fontSize: 32,
-  },
-  attachRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  attachButton: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.secondary,
-    backgroundColor: colors.card,
-  },
-  attachButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.secondary,
-  },
-  photoRemove: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.primary,
   },
   saveButtonDisabled: {
     opacity: 0.6,

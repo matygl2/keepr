@@ -1,11 +1,12 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -25,6 +26,8 @@ import { pickPhotoBase64, PhotoSource } from '../api/pickPhoto';
 import { colors, radius, spacing } from '../constants/theme';
 import { useProducts } from '../context/ProductsContext';
 import { DocumentType, Product } from '../types';
+import HoldToPeek from './HoldToPeek';
+import PdfViewer, { openPdfInAnotherApp } from './PdfViewer';
 import ZoomableImage from './ZoomableImage';
 
 /** Mismo límite que el servidor (5 MB). */
@@ -40,6 +43,26 @@ export default function DocumentsCard({ product }: { product: Product }) {
   const [sheetFor, setSheetFor] = useState<DocumentType | null>(null);
   const [viewing, setViewing] = useState<DocumentType | null>(null);
   const [busy, setBusy] = useState<DocumentType | null>(null);
+  // En iPhone no se puede abrir el selector de archivos mientras el menú se está
+  // cerrando: la acción se guarda y se ejecuta recién cuando el menú terminó de cerrarse.
+  const afterSheetCloses = useRef<(() => void) | null>(null);
+  // Documento cuyo PDF se está mostrando en el visor.
+  const [pdfFor, setPdfFor] = useState<DocumentType | null>(null);
+  // Foto que se ve mientras se mantiene apretada la miniatura (vista rápida).
+  const [peeking, setPeeking] = useState<DocumentType | null>(null);
+
+  const runAfterSheet = () => {
+    const action = afterSheetCloses.current;
+    afterSheetCloses.current = null;
+    action?.();
+  };
+
+  const closeSheetThen = (action: () => void) => {
+    afterSheetCloses.current = action;
+    setSheetFor(null);
+    // onDismiss solo existe en iOS; en Android (o si no llega) alcanza con esperar la animación.
+    setTimeout(runAfterSheet, Platform.OS === 'ios' ? 600 : 250);
+  };
 
   const photoIdOf = (type: DocumentType) => product.documents?.[type];
   const isPdf = (type: DocumentType) => product.documentKinds?.[type] === 'pdf';
@@ -69,11 +92,17 @@ export default function DocumentsCard({ product }: { product: Product }) {
   };
 
   const addPdf = async (type: DocumentType) => {
-    setSheetFor(null);
-    const result = await DocumentPicker.getDocumentAsync({
-      type: 'application/pdf',
-      copyToCacheDirectory: true,
-    });
+    let result: DocumentPicker.DocumentPickerResult;
+    try {
+      result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      Alert.alert('Could not open your files', detail);
+      return;
+    }
     if (result.canceled) return;
     const asset = result.assets[0];
     if (asset.size !== undefined && asset.size > MAX_FILE_BYTES) {
@@ -92,24 +121,28 @@ export default function DocumentsCard({ product }: { product: Product }) {
     }
   };
 
-  // El PDF es privado: se baja con el token y se abre con el visor del teléfono.
+  // El PDF es privado: se baja con el token. En iPhone se muestra dentro de la app;
+  // en Android el WebView no dibuja PDF, así que se abre con la app de PDF del teléfono.
+  const pdfPhotoId = pdfFor ? photoIdOf(pdfFor) : undefined;
+  const loadPdf = useMemo(
+    () =>
+      pdfFor && pdfPhotoId ? () => downloadDocumentPdf(product.id, pdfFor, pdfPhotoId) : null,
+    [pdfFor, pdfPhotoId, product.id]
+  );
+
   const openPdf = async (type: DocumentType) => {
     const photoId = photoIdOf(type);
     if (!photoId) return;
+    if (Platform.OS === 'ios') {
+      setPdfFor(type);
+      return;
+    }
     setBusy(type);
     try {
-      if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert('Not available', 'This device cannot open files from Keepr.');
-        return;
-      }
       const uri = await downloadDocumentPdf(product.id, type, photoId);
-      await Sharing.shareAsync(uri, {
-        mimeType: 'application/pdf',
-        UTI: 'com.adobe.pdf',
-        dialogTitle: labelOf(type),
-      });
+      await openPdfInAnotherApp(uri, labelOf(type));
     } catch (err) {
-      Alert.alert('Could not open the PDF', errorMessage(err));
+      Alert.alert('Could not open the PDF', err instanceof Error ? err.message : errorMessage(err));
     } finally {
       setBusy(null);
     }
@@ -148,26 +181,31 @@ export default function DocumentsCard({ product }: { product: Product }) {
         return (
           <View key={type} style={[styles.row, index > 0 && styles.rowBorder]}>
             {photoId && isPdf(type) ? (
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => void openPdf(type)}
-                accessibilityRole="button"
+              <HoldToPeek
+                onTap={() => void openPdf(type)}
+                onHoldStart={() => void openPdf(type)}
+                onHoldEnd={() => {}}
                 accessibilityLabel={`Open the ${label} PDF`}
               >
                 <View style={styles.iconWrap}>
                   <Text style={styles.pdfIcon}>📄</Text>
                   <Text style={styles.pdfBadge}>PDF</Text>
                 </View>
-              </TouchableOpacity>
+              </HoldToPeek>
             ) : photoId ? (
-              <TouchableOpacity activeOpacity={0.85} onPress={() => setViewing(type)}>
+              <HoldToPeek
+                onTap={() => setViewing(type)}
+                onHoldStart={() => setPeeking(type)}
+                onHoldEnd={() => setPeeking(null)}
+                accessibilityLabel={`View the ${label} photo`}
+              >
                 <Image
                   source={documentImageSource(product.id, type, photoId)}
                   style={styles.thumb}
                   contentFit="cover"
                   cachePolicy="disk"
                 />
-              </TouchableOpacity>
+              </HoldToPeek>
             ) : (
               <View style={styles.iconWrap}>
                 <Text>📄</Text>
@@ -180,7 +218,7 @@ export default function DocumentsCard({ product }: { product: Product }) {
                 {photoId
                   ? isPdf(type)
                     ? 'PDF saved · tap to open'
-                    : 'Photo saved · tap to view'
+                    : 'Photo saved · tap or hold to view'
                   : flagged(type)
                     ? 'Marked as available'
                     : 'Not added'}
@@ -199,7 +237,13 @@ export default function DocumentsCard({ product }: { product: Product }) {
       })}
 
       {/* Opciones para agregar, cambiar o quitar la foto */}
-      <Modal visible={sheetFor !== null} transparent animationType="fade" onRequestClose={() => setSheetFor(null)}>
+      <Modal
+        visible={sheetFor !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSheetFor(null)}
+        onDismiss={runAfterSheet}
+      >
         <Pressable style={styles.sheetBackdrop} onPress={() => setSheetFor(null)}>
           <Pressable
             style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}
@@ -220,7 +264,10 @@ export default function DocumentsCard({ product }: { product: Product }) {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.sheetOption}
-              onPress={() => sheetFor && void addPdf(sheetFor)}
+              onPress={() => {
+                const type = sheetFor;
+                if (type) closeSheetThen(() => void addPdf(type));
+              }}
             >
               <Text style={styles.sheetOptionText}>📎  Upload a PDF</Text>
             </TouchableOpacity>
@@ -237,6 +284,29 @@ export default function DocumentsCard({ product }: { product: Product }) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Vista rápida: mientras se mantiene apretada la miniatura. Tocar también la cierra. */}
+      <Modal visible={peeking !== null} transparent animationType="fade" onRequestClose={() => setPeeking(null)}>
+        <Pressable style={styles.peekBackdrop} onPress={() => setPeeking(null)}>
+          {peeking && photoIdOf(peeking) ? (
+            <View style={styles.peekCard}>
+              <Image
+                source={documentImageSource(product.id, peeking, photoIdOf(peeking)!)}
+                style={styles.peekImage}
+                contentFit="contain"
+                cachePolicy="disk"
+              />
+              <Text style={styles.peekLabel}>{labelOf(peeking)}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </Modal>
+
+      <PdfViewer
+        title={pdfFor ? labelOf(pdfFor) : ''}
+        load={loadPdf}
+        onClose={() => setPdfFor(null)}
+      />
 
       {/* Foto a pantalla completa: pellizcar para zoom, doble toque para volver, un toque para cerrar.
           El Modal es otra raíz: necesita su propio GestureHandlerRootView. */}
@@ -378,6 +448,32 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
     fontSize: 15,
+  },
+
+  // Vista rápida
+  peekBackdrop: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  peekCard: {
+    width: '100%',
+    height: '70%',
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  peekImage: {
+    flex: 1,
+    borderRadius: radius.md,
+  },
+  peekLabel: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: colors.textMuted,
   },
 
   // Visor
