@@ -1,10 +1,9 @@
 import { File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Product } from '../types';
-import { api, apiUrl, getAuthHeaders } from './client';
+import { uploadDocument } from './documents';
 
 const JPEG_QUALITY = 0.6;
-const UPLOAD_TIMEOUT_MS = 30_000;
 
 // La cámara ya entrega la foto comprimida en base64 (ver scan.tsx). La guardamos
 // acá, identificada por el nombre del archivo, para no depender de volver a abrir el archivo.
@@ -47,7 +46,7 @@ async function toBase64Jpeg(uri: string): Promise<string> {
   return result.base64;
 }
 
-/** Sube (o reemplaza) la foto de la garantía de un producto. Devuelve el producto actualizado. */
+/** Sube (o reemplaza) la foto del recibo de un producto, sacada con la cámara de Keepr. Devuelve el producto actualizado. */
 export async function uploadReceipt(productId: string, photoUri: string): Promise<Product> {
   let image = capturedData.get(photoKey(photoUri));
   if (!image) {
@@ -58,24 +57,7 @@ export async function uploadReceipt(productId: string, photoUri: string): Promis
       throw new Error(`Could not prepare the photo (${detail})`);
     }
   }
-  const { product } = await api.put<{ product: Product }>(
-    `/products/${productId}/receipt`,
-    { image },
-    { timeoutMs: UPLOAD_TIMEOUT_MS }
-  );
-  return product;
-}
-
-/**
- * Fuente para <Image> de expo-image. La foto es privada: se pide con el token.
- * `photoId` cambia al reemplazar la foto, así no se muestra una versión vieja de la caché.
- */
-export function receiptImageSource(productId: string, photoId: string) {
-  return {
-    uri: apiUrl(`/products/${productId}/receipt?v=${photoId}`),
-    headers: getAuthHeaders(),
-    cacheKey: `receipt-${productId}-${photoId}`,
-  };
+  return uploadDocument(productId, 'receipt', image);
 }
 
 /** Sube (o reemplaza) el recibo con un PDF. Va en el mismo campo `image` que las fotos. */

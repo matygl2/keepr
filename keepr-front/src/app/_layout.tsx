@@ -6,7 +6,7 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -19,6 +19,11 @@ import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { NotificationPreferencesProvider } from "../context/NotificationPreferencesContext";
 import { ProductsProvider, useProducts } from "../context/ProductsContext";
+
+
+import { NavigationBar } from 'expo-navigation-bar';
+
+
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -119,6 +124,8 @@ export default function RootLayout() {
     // Sin GestureHandlerRootView los gestos no responden (y no tira ningún error).
     <GestureHandlerRootView style={rootStyles.root}>
       <SafeAreaProvider>
+        {/* Oculta la barra de abajo. Solo existe en Android. */}
+        {Platform.OS === 'android' ? <NavigationBar hidden /> : null}
         <AuthProvider>
           <AppGate />
         </AuthProvider>

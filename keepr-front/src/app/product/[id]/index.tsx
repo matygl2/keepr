@@ -18,8 +18,8 @@ import {
   getProductById,
   getWarrantyStatus,
 } from '../../../data/mockData';
+import DocumentsCard from '../../../components/DocumentsCard';
 import ProductShareCard from '../../../components/ProductShareCard';
-import ReceiptSection from '../../../components/ReceiptSection';
 import { useProducts } from '../../../context/ProductsContext';
 import { useCalendarSync } from '../../../hooks/useCalendarSync';
 import type { Product } from '../../../types';
@@ -242,34 +242,7 @@ function ProductDetailContent({ product }: { product: Product }) {
             />
           </View>
 
-          <ReceiptSection product={product} />
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>DOCUMENTATION</Text>
-
-            {product.documentation.map((doc) => {
-              // El recibo cuenta como cargado si hay foto o PDF.
-              const uploaded =
-                doc.uploaded ||
-                (doc.name === 'Receipt' && Boolean(product.receiptPhotoId));
-
-              return (
-                <View key={doc.name} style={styles.docRow}>
-                  <View style={styles.docIconWrap}>
-                    <Text>📄</Text>
-                  </View>
-
-                  <Text style={styles.docName}>{doc.name}</Text>
-
-                  <Text
-                    style={uploaded ? styles.docCheck : styles.docMissing}
-                  >
-                    {uploaded ? '✓' : '—'}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          <DocumentsCard product={product} />
 
           <ProductShareCard product={product} />
 

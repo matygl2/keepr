@@ -2,13 +2,17 @@ import express, { Router } from 'express';
 import type { AppConfig } from '../config';
 import { HttpError, parse } from '../lib/errors';
 import {
-  decodeReceipt,
-  deleteReceipt,
-  receiptContentType,
-  receiptFilePath,
-  RECEIPT_JSON_LIMIT,
-  saveReceipt,
-} from '../lib/receipts';
+  DOCUMENT_COLUMNS,
+  DOCUMENT_NAMES,
+  DocumentType,
+  decodeDocument,
+  deletePhoto,
+  documentContentType,
+  isDocumentType,
+  photoFilePath,
+  PHOTO_JSON_LIMIT,
+  savePhoto,
+} from '../lib/documents';
 import { toProduct } from '../lib/serialize';
 import {
   CATEGORIES,
@@ -32,6 +36,12 @@ const DEFAULT_DOCUMENTATION = [
 ];
 
 const include = { maintenanceHistory: true } as const;
+
+/** Parámetros de las rutas de documentos (`type` falta en el camino anterior `/:id/receipt`). */
+interface DocParams {
+  id: string;
+  type?: string;
+}
 
 export function productsRouter(config: AppConfig) {
   const router = Router();
@@ -130,45 +140,100 @@ export function productsRouter(config: AppConfig) {
   router.delete('/:id', async (req, res) => {
     const current = await getOwned(req.params.id, res.locals.userId);
     await db.product.delete({ where: { id: current.id } });
-    if (current.receiptImage) await deleteReceipt(config.uploadsDir, current.receiptImage);
+    for (const column of Object.values(DOCUMENT_COLUMNS)) {
+      const fileName = current[column];
+      if (fileName) await deletePhoto(config.uploadsDir, fileName);
+    }
     res.status(204).end();
   });
 
-  // Sube (o reemplaza) el recibo. Cuerpo: { "image": "<base64 de un JPEG o de un PDF>" }.
-  // El campo se sigue llamando "image" para no romper la subida desde la cámara.
-  router.put('/:id/receipt', express.json({ limit: RECEIPT_JSON_LIMIT }), async (req, res) => {
+  /** Tipo de documento de la ruta. `/:id/receipt` es el camino anterior: equivale a `receipt`. */
+  function documentType(req: express.Request<DocParams>): DocumentType {
+    const type = req.params.type ?? 'receipt';
+    if (!isDocumentType(type)) throw new HttpError(404, 'Unknown document type.');
+    return type;
+  }
+
+  /** Marca el documento como subido (o no) en la lista `documentation` del producto. */
+  function withDocumentFlag(documentation: unknown, type: DocumentType, uploaded: boolean) {
+    if (!Array.isArray(documentation)) return documentation;
+    return documentation.map((d) =>
+      d && typeof d === 'object' && (d as { name?: unknown }).name === DOCUMENT_NAMES[type]
+        ? { ...d, uploaded }
+        : d
+    );
+  }
+
+  // Sube (o reemplaza) la foto o el PDF de un documento. Cuerpo: { "image": "<base64 de un JPEG o PDF>" }.
+  const upload = async (req: express.Request<DocParams>, res: express.Response) => {
+    const type = documentType(req);
+    const column = DOCUMENT_COLUMNS[type];
     const { image } = parse(receiptUploadSchema, req.body);
-    const { bytes, extension } = decodeReceipt(image);
+    const { bytes, extension } = decodeDocument(image);
     const current = await getOwned(req.params.id, res.locals.userId);
 
-    const fileName = await saveReceipt(config.uploadsDir, bytes, extension);
+    const fileName = await savePhoto(config.uploadsDir, bytes, extension);
     try {
       const updated = await db.product.update({
         where: { id: current.id },
-        data: { receiptImage: fileName },
+        data: {
+          [column]: fileName,
+          documentation: withDocumentFlag(current.documentation, type, true) as any,
+        },
         include,
       });
-      if (current.receiptImage) await deleteReceipt(config.uploadsDir, current.receiptImage);
+      const old = current[column];
+      if (old) await deletePhoto(config.uploadsDir, old);
       res.json({ product: toProduct(updated) });
     } catch (err) {
       // Si no se pudo anotar en la base, no dejamos el archivo huérfano.
-      await deleteReceipt(config.uploadsDir, fileName);
+      await deletePhoto(config.uploadsDir, fileName);
       throw err;
     }
-  });
+  };
+  const bigJson = express.json({ limit: PHOTO_JSON_LIMIT });
+  router.put('/:id/documents/:type', bigJson, upload);
+  router.put('/:id/receipt', bigJson, upload);
 
-  // Devuelve el recibo (foto o PDF), solo a su dueño (la app manda el token en el header).
-  router.get('/:id/receipt', async (req, res, next) => {
+  // Devuelve la foto, solo a su dueño (la app manda el token en el header).
+  const download = async (
+    req: express.Request<DocParams>,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    const type = documentType(req);
     const current = await getOwned(req.params.id, res.locals.userId);
-    const file = current.receiptImage ? receiptFilePath(config.uploadsDir, current.receiptImage) : null;
-    if (!file) throw new HttpError(404, 'This product has no receipt.');
+    const stored = current[DOCUMENT_COLUMNS[type]];
+    const file = stored ? photoFilePath(config.uploadsDir, stored) : null;
+    if (!file) throw new HttpError(404, 'This document has no photo.');
 
     res.set('Cache-Control', 'private, max-age=3600');
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.type(receiptContentType(file));
+    res.type(documentContentType(file));
     res.sendFile(file, (err) => {
-      if (err && !res.headersSent) next(new HttpError(404, 'Receipt not found.'));
+      if (err && !res.headersSent) next(new HttpError(404, 'Photo not found.'));
     });
+  };
+  router.get('/:id/documents/:type', download);
+  router.get('/:id/receipt', download);
+
+  // Quita la foto de un documento y devuelve el producto actualizado.
+  router.delete('/:id/documents/:type', async (req, res) => {
+    const type = documentType(req);
+    const column = DOCUMENT_COLUMNS[type];
+    const current = await getOwned(req.params.id, res.locals.userId);
+    if (!current[column]) throw new HttpError(404, 'This document has no photo.');
+
+    const updated = await db.product.update({
+      where: { id: current.id },
+      data: {
+        [column]: null,
+        documentation: withDocumentFlag(current.documentation, type, false) as any,
+      },
+      include,
+    });
+    await deletePhoto(config.uploadsDir, current[column]!);
+    res.json({ product: toProduct(updated) });
   });
 
   router.post('/:id/maintenance', async (req, res) => {

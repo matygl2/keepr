@@ -25,6 +25,8 @@ interface ProductRow {
   documentation: unknown;
   calendarEventId: string | null;
   receiptImage?: string | null;
+  warrantyImage?: string | null;
+  manualImage?: string | null;
   maintenanceHistory: {
     id: string;
     date: string;
@@ -35,6 +37,17 @@ interface ProductRow {
   }[];
 }
 
+function photoId(fileName: string | null | undefined): string | undefined {
+  return fileName ? fileName.replace(/\.(jpg|pdf)$/, '') : undefined;
+}
+
+/** 'pdf' o 'image' según el archivo guardado, para que la app sepa cómo mostrarlo. */
+function kindOf(fileName: string | null | undefined): 'image' | 'pdf' | undefined {
+  if (!fileName) return undefined;
+  return fileName.endsWith('.pdf') ? 'pdf' : 'image';
+}
+
+/** Misma forma que el tipo `Product` de la app (sin userId ni createdAt). */
 export function toProduct(p: ProductRow) {
   return {
     id: p.id,
@@ -51,10 +64,20 @@ export function toProduct(p: ProductRow) {
     serialNumber: p.serialNumber,
     documentation: p.documentation,
     calendarEventId: p.calendarEventId ?? undefined,
-    // Si hay recibo, la app lo pide en GET /products/:id/receipt. Este id cambia
-    // cuando se reemplaza el recibo, así la app no muestra una versión vieja.
-    receiptPhotoId: p.receiptImage ? p.receiptImage.replace(/\.(jpg|pdf)$/, '') : undefined,
-    receiptType: p.receiptImage ? (p.receiptImage.endsWith('.pdf') ? 'pdf' : 'image') : undefined,
+    // Si hay foto, la app la pide en GET /products/:id/documents/:tipo. El id de
+    // cada foto cambia cuando se reemplaza, así la app no muestra una imagen vieja.
+    documents: {
+      receipt: photoId(p.receiptImage),
+      warranty: photoId(p.warrantyImage),
+      manual: photoId(p.manualImage),
+    },
+    documentKinds: {
+      receipt: kindOf(p.receiptImage),
+      warranty: kindOf(p.warrantyImage),
+      manual: kindOf(p.manualImage),
+    },
+    // Anterior a `documents`: lo mismo que documents.receipt.
+    receiptPhotoId: photoId(p.receiptImage),
     maintenanceHistory: [...p.maintenanceHistory]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((m) => ({

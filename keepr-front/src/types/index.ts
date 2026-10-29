@@ -1,10 +1,16 @@
+/** Los tres documentos de un producto, cada uno con su foto o PDF. */
+export type DocumentType = 'receipt' | 'warranty' | 'manual';
+
+/** Qué hay guardado en cada documento: una foto o un PDF. */
+export type DocumentKind = 'image' | 'pdf';
+
 export type Category = 'Tech' | 'Home' | 'Fashion' | 'Other';
 
 export type WarrantyStatus = 'active' | 'expiring' | 'expired';
 
 export interface MaintenanceEntry {
   id: string;
-  date: string;
+  date: string; // ISO date
   title: string;
   provider: string;
   cost: number;
@@ -33,17 +39,20 @@ export interface Product {
   maintenanceHistory: MaintenanceEntry[];
   /** Set once the warranty expiry has been synced to the device's native calendar. */
   calendarEventId?: string;
-  /** Presente si el producto tiene recibo (foto o PDF). Cambia al reemplazar el recibo. */
+  /** Id de la foto de cada documento (si la tiene). Cambia al reemplazar la foto. */
+  documents?: Partial<Record<DocumentType, string>>;
+  documentKinds?: Partial<Record<DocumentType, DocumentKind>>;
+  /** Anterior a `documents`: es lo mismo que `documents.receipt`. */
   receiptPhotoId?: string;
-  receiptType?: ReceiptType;
 }
 
-export type ReceiptType = 'image' | 'pdf';
-
-
+/**
+ * Lo que se le manda al servidor para crear un producto. El servidor genera
+ * el id; si no se manda maintenanceHistory, registra la compra automáticamente.
+ */
 export type NewProductInput = Omit<
   Product,
-  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId' | 'receiptType'
+  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId' | 'documents' | 'documentKinds'
 > & {
   maintenanceHistory?: Omit<MaintenanceEntry, 'id'>[];
 };
