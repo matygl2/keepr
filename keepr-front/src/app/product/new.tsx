@@ -19,7 +19,7 @@ import NewProductDocuments, {
 } from '../../components/NewProductDocuments';
 import { colors, fonts, radius, spacing } from '../../constants/theme';
 import { useProducts } from '../../context/ProductsContext';
-import { formatDate } from '../../data/mockData';
+import { formatDate, getProductById } from '../../data/mockData';
 import { Category, DocumentType, Product } from '../../types';
 import { addMonthsISO, isValidISODate, localTodayISO } from '../../utils/validation';
 import { DOCUMENT_TYPES, readFileBase64 } from '../../api/documents';
@@ -45,11 +45,25 @@ const DURATIONS = [
 type DurationKey = (typeof DURATIONS)[number]['key'];
 type FieldName = 'name' | 'store' | 'purchaseDate' | 'price' | 'customExpiry';
 
+/** La duración de la lista que da justo esa fecha de vencimiento, o 'custom'. */
+function durationFor(purchaseDate: string, expiryDate: string): DurationKey {
+  const match = DURATIONS.find(
+    (d) => d.months > 0 && addMonthsISO(purchaseDate, d.months) === expiryDate
+  );
+  return match ? match.key : 'custom';
+}
+
+/**
+ * Formulario para agregar un producto. También se usa para editarlo:
+ * /product/[id]/edit abre esta misma pantalla con el producto ya cargado.
+ */
 export default function NewProductScreen() {
   const router = useRouter();
-  const { addProduct, attachReceipt, attachDocument } = useProducts();
+  const { products, addProduct, updateProduct, attachReceipt, attachDocument } = useProducts();
   // Si venís de sacar una foto, llega su ubicación temporal en el teléfono.
-  const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
+  // Si venís de "Edit", llega el id del producto a editar.
+  const { photoUri, id } = useLocalSearchParams<{ photoUri?: string; id?: string }>();
+  const editing = id ? getProductById(products, id) : undefined;
   // Recibo, garantía y manual: si venís de la cámara, el recibo ya trae la foto.
   const [documents, setDocuments] = useState<PendingDocuments>(() =>
     photoUri
@@ -60,17 +74,22 @@ export default function NewProductScreen() {
       : EMPTY_DOCUMENTS
   );
 
-  const [name, setName] = useState('');
-  const [brand, setBrand] = useState('');
-  const [model, setModel] = useState('');
-  const [category, setCategory] = useState<Category>('Tech');
-  const [subCategory, setSubCategory] = useState('');
-  const [store, setStore] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(localTodayISO());
-  const [price, setPrice] = useState('');
-  const [duration, setDuration] = useState<DurationKey>('1y');
-  const [customExpiry, setCustomExpiry] = useState('');
-  const [serialNumber, setSerialNumber] = useState('');
+  // Al editar, cada campo arranca con el valor que ya tiene el producto.
+  const [name, setName] = useState(editing?.name ?? '');
+  const [brand, setBrand] = useState(editing?.brand ?? '');
+  const [model, setModel] = useState(editing?.model ?? '');
+  const [category, setCategory] = useState<Category>(editing?.category ?? 'Tech');
+  const [subCategory, setSubCategory] = useState(editing?.subCategory ?? '');
+  const [store, setStore] = useState(editing?.store ?? '');
+  const [purchaseDate, setPurchaseDate] = useState(editing?.purchaseDate ?? localTodayISO());
+  const [price, setPrice] = useState(editing ? String(editing.price) : '');
+  const [duration, setDuration] = useState<DurationKey>(
+    editing ? durationFor(editing.purchaseDate, editing.warrantyExpiryDate) : '1y'
+  );
+  const [customExpiry, setCustomExpiry] = useState(editing?.warrantyExpiryDate ?? '');
+  const [serialNumber, setSerialNumber] = useState(
+    editing && editing.serialNumber !== 'N/A' ? editing.serialNumber : ''
+  );
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [saving, setSaving] = useState(false);
   // Evita guardar dos veces con un doble toque: el estado tarda un render en
@@ -123,6 +142,31 @@ export default function NewProductScreen() {
     const priceNumber = Number(price);
     savingRef.current = true;
     setSaving(true);
+
+    // Editar: PATCH con los datos del formulario y volver al detalle.
+    if (editing) {
+      try {
+        await updateProduct(editing.id, {
+          name: name.trim(),
+          brand: brand.trim(),
+          model: model.trim(),
+          category,
+          subCategory: subCategory.trim() || category,
+          icon: category === editing.category ? editing.icon : CATEGORY_ICONS[category],
+          store: store.trim(),
+          purchaseDate,
+          price: priceNumber,
+          warrantyExpiryDate: expiryDate,
+          serialNumber: serialNumber.trim() || 'N/A',
+        });
+        router.back();
+      } catch (err) {
+        Alert.alert('Could not save the changes', errorMessage(err));
+        savingRef.current = false;
+        setSaving(false);
+      }
+      return;
+    }
 
     let created: Product;
     try {
@@ -209,9 +253,11 @@ export default function NewProductScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Add a product</Text>
+          <Text style={styles.title}>{editing ? 'Edit product' : 'Add a product'}</Text>
           <Text style={styles.subtitle}>
-            Enter the purchase details and Keepr will track the warranty for you.
+            {editing
+              ? 'Update the details. Documents are managed from the product page.'
+              : 'Enter the purchase details and Keepr will track the warranty for you.'}
           </Text>
 
           <FormField
@@ -327,8 +373,12 @@ export default function NewProductScreen() {
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>DOCUMENTS</Text>
-          <NewProductDocuments value={documents} onChange={setDocuments} />
+          {editing ? null : (
+            <>
+              <Text style={styles.label}>DOCUMENTS</Text>
+              <NewProductDocuments value={documents} onChange={setDocuments} />
+            </>
+          )}
 
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -336,7 +386,9 @@ export default function NewProductScreen() {
             onPress={handleSave}
             disabled={saving}
           >
-            <Text style={styles.saveButtonText}>{saving ? 'Saving…' : 'Save product'}</Text>
+            <Text style={styles.saveButtonText}>
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Save product'}
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -99,6 +99,7 @@ function AppGate() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="product/new" />
             <Stack.Screen name="product/[id]/index" />
+            <Stack.Screen name="product/[id]/edit" />
             <Stack.Screen name="product/[id]/maintenance" />
 
             {/* Pantalla de configuración de notificaciones */}

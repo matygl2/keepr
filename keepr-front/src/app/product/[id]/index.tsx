@@ -109,12 +109,23 @@ function ProductDetailContent({ product }: { product: Product }) {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => router.push(`/product/${product.id}/edit`)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit product"
+            >
+              <Text style={styles.editText}>✏️ Edit</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.headerRow}>
             <View style={styles.headerIcon}>
@@ -340,6 +351,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  editButton: {
+    height: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '600',
   },
   backButton: {
     width: 40,
