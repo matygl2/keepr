@@ -1,9 +1,11 @@
 import { Image } from 'expo-image';
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { receiptImageSource } from '../api/receipt';
 import { colors, radius, spacing } from '../constants/theme';
+import ZoomableImage from './ZoomableImage';
 
 interface Props {
   productId: string;
@@ -34,13 +36,14 @@ export default function ReceiptPhotoCard({ productId, photoId, bare = false }: P
             cachePolicy="disk"
             onError={() => setFailed(true)}
           />
-          <Text style={styles.hint}>Tap to enlarge</Text>
+          <Text style={styles.hint}>Tap to enlarge · pinch to zoom</Text>
         </TouchableOpacity>
       )}
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Image source={source} style={styles.full} contentFit="contain" cachePolicy="disk" />
+        {/* El Modal es otra raíz: necesita su propio GestureHandlerRootView. */}
+        <GestureHandlerRootView style={styles.backdrop}>
+          <ZoomableImage source={source} onClose={() => setOpen(false)} />
           <TouchableOpacity
             style={[styles.close, { top: insets.top + spacing.sm }]}
             onPress={() => setOpen(false)}
@@ -48,7 +51,7 @@ export default function ReceiptPhotoCard({ productId, photoId, bare = false }: P
           >
             <Text style={styles.closeText}>✕</Text>
           </TouchableOpacity>
-        </Pressable>
+        </GestureHandlerRootView>
       </Modal>
     </View>
   );
@@ -90,10 +93,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
     justifyContent: 'center',
-  },
-  full: {
-    width: '100%',
-    height: '100%',
   },
   close: {
     position: 'absolute',
