@@ -96,11 +96,6 @@ export default function ProfileScreen() {
           <SettingsRow
             label="Export my data"
             onPress={() => notImplemented("Export my data")}
-          />
-
-          <SettingsRow
-            label="Settings"
-            onPress={() => notImplemented("Settings")}
             isLast
           />
         </View>
