@@ -29,15 +29,34 @@ const STATUS_DOT_COLOR = {
   expired: colors.textMuted,
 };
 
+// Calcula qué porcentaje de garantía queda disponible.
 function getWarrantyProgress(purchaseDate: string, expiryDate: string): number {
   const start = parseISODate(purchaseDate).getTime();
   const end = parseISODate(expiryDate).getTime();
   const now = Date.now();
 
-  if (now >= end) return 1;
-  if (now <= start) return 0;
+  // Evitar cálculos incorrectos con fechas inválidas.
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0;
+  }
 
-  return (now - start) / (end - start);
+  // Si el vencimiento no es posterior a la compra.
+  if (end <= start) {
+    return now >= end ? 0 : 1;
+  }
+
+  // Garantía vencida: barra vacía.
+  if (now >= end) {
+    return 0;
+  }
+
+  // La garantía todavía no comenzó: barra completa.
+  if (now <= start) {
+    return 1;
+  }
+
+  // Porcentaje de garantía restante.
+  return Math.max(0, Math.min(1, (end - now) / (end - start)));
 }
 
 export default function ProductDetailScreen() {
@@ -61,10 +80,19 @@ function ProductDetailContent({ product }: { product: Product }) {
   const { removeProduct } = useProducts();
 
   const status = getWarrantyStatus(product.warrantyExpiryDate);
+
   const progress = getWarrantyProgress(
     product.purchaseDate,
     product.warrantyExpiryDate,
   );
+
+  // Color según el estado de la garantía.
+  const progressColor =
+    status === "expiring"
+      ? colors.danger
+      : status === "expired"
+        ? colors.textMuted
+        : colors.secondary;
 
   const handleDeleteProduct = () => {
     Alert.alert(
@@ -94,6 +122,7 @@ function ProductDetailContent({ product }: { product: Product }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.topBar}>
             <TouchableOpacity
@@ -132,7 +161,9 @@ function ProductDetailContent({ product }: { product: Product }) {
           />
         </View>
 
+        {/* BODY */}
         <View style={styles.body}>
+          {/* PURCHASE */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PURCHASE</Text>
 
@@ -158,11 +189,13 @@ function ProductDetailContent({ product }: { product: Product }) {
             </View>
           </View>
 
+          {/* WARRANTY */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>WARRANTY</Text>
 
             <View style={styles.warrantyRow}>
               <Text style={styles.fieldLabel}>Expires</Text>
+
               <Text style={styles.fieldValue}>
                 {formatDate(product.warrantyExpiryDate)}
               </Text>
@@ -170,11 +203,15 @@ function ProductDetailContent({ product }: { product: Product }) {
 
             <View style={styles.warrantyRow}>
               <Text style={styles.fieldLabel}>Remaining</Text>
+
               <Text
                 style={[
                   styles.fieldValue,
                   status === "expiring" && {
                     color: colors.danger,
+                  },
+                  status === "expired" && {
+                    color: colors.textMuted,
                   },
                 ]}
               >
@@ -182,18 +219,36 @@ function ProductDetailContent({ product }: { product: Product }) {
               </Text>
             </View>
 
-            <View style={styles.progressTrack}>
+            {/* BARRA DE GARANTÍA RESTANTE */}
+            <View
+              style={styles.progressTrack}
+              accessibilityRole="progressbar"
+              accessibilityLabel="Warranty remaining"
+              accessibilityValue={{
+                min: 0,
+                max: 100,
+                now: Math.round(progress * 100),
+              }}
+            >
               <View
                 style={[
                   styles.progressFill,
                   {
-                    width: `${Math.min(progress, 1) * 100}%`,
+                    width: `${progress * 100}%`,
+                    backgroundColor: progressColor,
                   },
                 ]}
               />
             </View>
+
+            <Text style={styles.progressCaption}>
+              {status === "expired"
+                ? "Warranty expired"
+                : `${Math.round(progress * 100)}% of warranty remaining`}
+            </Text>
           </View>
 
+          {/* PRODUCT INFORMATION */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PRODUCT INFORMATION</Text>
 
@@ -202,21 +257,28 @@ function ProductDetailContent({ product }: { product: Product }) {
               value={product.serialNumber}
               isFirst
             />
+
             <InfoRow label="Model" value={product.model} />
+
             <InfoRow label="Brand" value={product.brand} />
+
             <InfoRow label="Category" value={product.subCategory} isLast />
           </View>
 
+          {/* DOCUMENTS */}
           <DocumentsCard product={product} />
 
+          {/* SHARE */}
           <ProductShareCard product={product} />
 
+          {/* ACTIONS */}
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={styles.actionCard}
               onPress={() => router.push(`/product/${product.id}/maintenance`)}
             >
               <Text style={styles.actionIcon}>🔧</Text>
+
               <Text style={styles.actionLabel}>Maintenance History</Text>
             </TouchableOpacity>
 
@@ -227,12 +289,14 @@ function ProductDetailContent({ product }: { product: Product }) {
               }
             >
               <Text style={styles.actionIcon}>🔗</Text>
+
               <Text style={[styles.actionLabel, { color: colors.primary }]}>
                 Transfer Product
               </Text>
             </TouchableOpacity>
           </View>
 
+          {/* DELETE */}
           <TouchableOpacity
             style={styles.deleteButton}
             onPress={handleDeleteProduct}
@@ -276,24 +340,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.secondary,
   },
+
   scrollContent: {
     flexGrow: 1,
   },
+
   notFound: {
     padding: spacing.lg,
     color: colors.textPrimary,
   },
+
   header: {
     backgroundColor: colors.secondary,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
+
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
+
   editButton: {
     height: 40,
     paddingHorizontal: spacing.md,
@@ -302,11 +371,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   editText: {
     color: colors.white,
     fontSize: 14,
     fontWeight: "600",
   },
+
   backButton: {
     width: 40,
     height: 40,
@@ -316,15 +387,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: spacing.lg,
   },
+
   backIcon: {
     color: colors.white,
     fontSize: 20,
   },
+
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
   },
+
   headerIcon: {
     width: 72,
     height: 72,
@@ -333,25 +407,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   headerText: {
     flex: 1,
   },
+
   headerTitle: {
     fontFamily: fonts.serif,
     fontSize: 26,
     color: colors.white,
   },
+
   headerSubtitle: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 14,
     marginTop: 2,
   },
+
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     marginTop: spacing.md,
   },
+
   body: {
     backgroundColor: colors.background,
     padding: spacing.lg,
@@ -360,40 +439,48 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
     gap: spacing.md,
   },
+
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
     padding: spacing.lg,
   },
+
   cardTitle: {
     fontFamily: fonts.serif,
     fontSize: 15,
     color: colors.primary,
     marginBottom: spacing.md,
   },
+
   threeCol: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: spacing.sm,
   },
+
   threeColItem: {
     flex: 1,
   },
+
   fieldLabel: {
     fontSize: 12,
     color: colors.textSecondary,
     marginBottom: 4,
   },
+
   fieldValue: {
     fontSize: 15,
     fontWeight: "700",
     color: colors.textPrimary,
   },
+
   warrantyRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: spacing.sm,
   },
+
   progressTrack: {
     height: 6,
     borderRadius: 3,
@@ -401,26 +488,37 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     overflow: "hidden",
   },
+
   progressFill: {
     height: "100%",
-    backgroundColor: colors.secondary,
     borderRadius: 3,
   },
+
+  progressCaption: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    textAlign: "right",
+  },
+
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: spacing.sm,
   },
+
   infoRowBorder: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+
   docRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     paddingVertical: spacing.sm,
   },
+
   docIconWrap: {
     width: 36,
     height: 36,
@@ -429,25 +527,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   docName: {
     flex: 1,
     fontWeight: "600",
     color: colors.textPrimary,
   },
+
   docCheck: {
     color: colors.success,
     fontWeight: "700",
     fontSize: 16,
   },
+
   docMissing: {
     color: colors.textMuted,
     fontWeight: "700",
     fontSize: 16,
   },
+
   actionsRow: {
     flexDirection: "row",
     gap: spacing.md,
   },
+
   actionCard: {
     flex: 1,
     backgroundColor: colors.card,
@@ -456,18 +559,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
   },
+
   actionCardOutline: {
     backgroundColor: "#F1E4C8",
   },
+
   actionIcon: {
     fontSize: 22,
   },
+
   actionLabel: {
     fontWeight: "700",
     color: colors.secondary,
     fontSize: 13,
     textAlign: "center",
   },
+
   deleteButton: {
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -477,6 +584,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   deleteButtonText: {
     color: colors.danger,
     fontSize: 14,
