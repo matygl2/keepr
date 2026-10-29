@@ -8,8 +8,9 @@ import React, {
 } from 'react';
 import { api, errorMessage } from '../api/client';
 import { toPatchBody } from '../api/productPayload';
+import { removeDocument as removeDocumentRequest, uploadDocument } from '../api/documents';
 import { uploadReceipt } from '../api/receipt';
-import { MaintenanceEntry, NewProductInput, Product } from '../types';
+import { DocumentType, MaintenanceEntry, NewProductInput, Product } from '../types';
 
 type ProductsStatus = 'loading' | 'ready' | 'error';
 
@@ -25,8 +26,12 @@ interface ProductsContextValue {
   /** Edita campos del producto. `calendarEventId: undefined` lo borra. */
   updateProduct: (id: string, patch: Partial<Product>) => Promise<Product>;
   removeProduct: (id: string) => Promise<void>;
-  /** Sube (o reemplaza) la foto de la garantía de un producto ya guardado. */
+  /** Sube (o reemplaza) la foto del recibo de un producto ya guardado, a partir de su ubicación. */
   attachReceipt: (id: string, photoUri: string) => Promise<Product>;
+  /** Sube (o reemplaza) la foto de un documento. `image` es un JPEG en base64. */
+  attachDocument: (id: string, type: DocumentType, image: string) => Promise<Product>;
+  /** Quita la foto de un documento. */
+  removeDocument: (id: string, type: DocumentType) => Promise<Product>;
   addMaintenance: (id: string, entry: Omit<MaintenanceEntry, 'id'>) => Promise<Product>;
 }
 
@@ -90,6 +95,24 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     [replaceProduct]
   );
 
+  const attachDocument = useCallback(
+    async (id: string, type: DocumentType, image: string) => {
+      const product = await uploadDocument(id, type, image);
+      replaceProduct(product);
+      return product;
+    },
+    [replaceProduct]
+  );
+
+  const removeDocument = useCallback(
+    async (id: string, type: DocumentType) => {
+      const product = await removeDocumentRequest(id, type);
+      replaceProduct(product);
+      return product;
+    },
+    [replaceProduct]
+  );
+
   const addMaintenance = useCallback(
     async (id: string, entry: Omit<MaintenanceEntry, 'id'>) => {
       const { product } = await api.post<{ product: Product }>(`/products/${id}/maintenance`, entry);
@@ -109,6 +132,8 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       updateProduct,
       removeProduct,
       attachReceipt,
+      attachDocument,
+      removeDocument,
       addMaintenance,
     }),
     [
@@ -120,6 +145,8 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       updateProduct,
       removeProduct,
       attachReceipt,
+      attachDocument,
+      removeDocument,
       addMaintenance,
     ]
   );

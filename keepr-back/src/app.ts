@@ -33,12 +33,13 @@ export function createApp(options: AppOptions) {
   app.use(helmet());
   app.use(cors()); // La API usa tokens en el header (no cookies), por eso se puede abrir.
 
-  // Cuerpos chicos en todas las rutas, salvo la subida de fotos (PUT .../receipt),
+  // Cuerpos chicos en todas las rutas, salvo la subida de fotos (PUT .../documents/:tipo),
   // que lleva su propio límite más grande y se activa recién DESPUÉS de comprobar
   // el login (ver routes/products.ts), así nadie sin sesión puede mandar 7 MB.
   const smallJson = express.json({ limit: '100kb' });
   const isReceiptUpload = (req: express.Request) =>
-    req.method === 'PUT' && /^\/products\/[^/]+\/receipt\/?$/.test(req.path);
+    req.method === 'PUT' &&
+    /^\/products\/[^/]+\/(receipt|documents\/(receipt|warranty|manual))\/?$/.test(req.path);
   app.use((req, res, next) => (isReceiptUpload(req) ? next() : smallJson(req, res, next)));
 
   app.get('/health', (_req, res) => {

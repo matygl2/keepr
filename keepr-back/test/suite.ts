@@ -299,6 +299,78 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
       assert.equal(filesInUploads(), start); // y al borrar el producto, también la foto
     });
 
+    it('keeps a separate photo for the receipt, the warranty document and the manual', async () => {
+      const owner = await register('docs-owner@email.com');
+      const other = await register('docs-other@email.com');
+      const id = (await call('POST', '/products', { token: owner.token, body: validProduct })).json.product.id;
+      const start = filesInUploads();
+      const flags = (product: any) => Object.fromEntries(product.documentation.map((d: any) => [d.name, d.uploaded]));
+
+      const created = (await call('GET', `/products/${id}`, { token: owner.token })).json.product;
+      assert.deepEqual(created.documents, {}); // sin fotos todavía
+      assert.equal((await rawGet(`/products/${id}/documents/manual`, owner.token)).status, 404); // todavía sin foto
+
+      // Cada tipo guarda su propia foto, sin pisar a los otros
+      const photos = { receipt: jpeg(11), warranty: jpeg(22), manual: jpeg(33) };
+      for (const [type, bytes] of Object.entries(photos)) {
+        const up = await call('PUT', `/products/${id}/documents/${type}`, { token: owner.token, body: { image: bytes.toString('base64') } });
+        assert.equal(up.status, 200, type);
+        assert.match(up.json.product.documents[type], /^[0-9a-f-]{36}$/);
+      }
+      assert.equal(filesInUploads(), start + 3);
+      for (const [type, bytes] of Object.entries(photos)) {
+        const got = await rawGet(`/products/${id}/documents/${type}`, owner.token);
+        assert.equal(got.status, 200, type);
+        assert.equal(got.type, 'image/jpeg');
+        assert.ok(got.bytes.equals(bytes), `${type} devuelve su propia foto`);
+      }
+
+      // La lista "documentation" marca cada documento como subido
+      const afterUpload = (await call('GET', `/products/${id}`, { token: owner.token })).json.product;
+      assert.deepEqual(flags(afterUpload), { Receipt: true, 'Warranty document': true, Manual: true });
+      assert.equal(afterUpload.receiptPhotoId, afterUpload.documents.receipt); // compatibilidad
+      assert.equal(JSON.stringify(afterUpload).includes('.jpg'), false);
+
+      // El camino anterior /receipt sigue apuntando al recibo
+      assert.ok((await rawGet(`/products/${id}/receipt`, owner.token)).bytes.equals(photos.receipt));
+
+      // Reemplazar uno no toca los otros y borra su archivo viejo
+      const replaced = await call('PUT', `/products/${id}/documents/warranty`, { token: owner.token, body: { image: jpeg(44).toString('base64') } });
+      assert.notEqual(replaced.json.product.documents.warranty, afterUpload.documents.warranty);
+      assert.equal(replaced.json.product.documents.manual, afterUpload.documents.manual);
+      assert.equal(filesInUploads(), start + 3);
+
+      // Solo el dueño, y con login
+      assert.equal((await rawGet(`/products/${id}/documents/manual`, other.token)).status, 404);
+      assert.equal((await rawGet(`/products/${id}/documents/manual`)).status, 401);
+      assert.equal((await call('PUT', `/products/${id}/documents/manual`, { token: other.token, body: { image: jpeg().toString('base64') } })).status, 404);
+      assert.equal((await call('DELETE', `/products/${id}/documents/manual`, { token: other.token })).status, 404);
+      assert.equal((await call('DELETE', `/products/${id}/documents/manual`)).status, 401);
+
+      // Tipos inventados no existen
+      assert.equal((await call('PUT', `/products/${id}/documents/passport`, { token: owner.token, body: { image: jpeg().toString('base64') } })).status, 404);
+      assert.equal((await rawGet(`/products/${id}/documents/passport`, owner.token)).status, 404);
+
+      // Quitar un documento: borra el archivo, apaga su marca y deja los demás
+      const removed = await call('DELETE', `/products/${id}/documents/manual`, { token: owner.token });
+      assert.equal(removed.status, 200);
+      assert.equal(removed.json.product.documents.manual, undefined);
+      assert.deepEqual(flags(removed.json.product), { Receipt: true, 'Warranty document': true, Manual: false });
+      assert.equal(filesInUploads(), start + 2);
+      assert.equal((await rawGet(`/products/${id}/documents/manual`, owner.token)).status, 404);
+      assert.equal((await call('DELETE', `/products/${id}/documents/manual`, { token: owner.token })).status, 404); // ya no tiene
+
+      // Los límites de la subida valen para los tres tipos
+      const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(100)]);
+      assert.equal((await call('PUT', `/products/${id}/documents/manual`, { token: owner.token, body: { image: png.toString('base64') } })).status, 400);
+      assert.equal((await call('PUT', `/products/${id}/documents/manual`, { token: owner.token, body: { image: 'A'.repeat(8 * 1024 * 1024) } })).status, 413);
+      assert.equal(filesInUploads(), start + 2);
+
+      // Al borrar el producto se borran todas sus fotos
+      assert.equal((await call('DELETE', `/products/${id}`, { token: owner.token })).status, 204);
+      assert.equal(filesInUploads(), start);
+    });
+
     it('keeps rejecting big bodies on every other route', async () => {
       const r = await call('POST', '/auth/login', { body: { email: 'a@b.com', password: 'x'.repeat(200_000) } });
       assert.equal(r.status, 413);

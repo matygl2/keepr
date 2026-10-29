@@ -6,7 +6,7 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { View } from "react-native";
+import { Platform, View } from 'react-native';
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import AuthScreen from "../components/AuthScreen";
@@ -18,6 +18,11 @@ import { colors } from "../constants/theme";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { NotificationPreferencesProvider } from "../context/NotificationPreferencesContext";
 import { ProductsProvider, useProducts } from "../context/ProductsContext";
+
+
+import { NavigationBar } from 'expo-navigation-bar';
+
+
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -116,6 +121,8 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      {/* Oculta la barra de abajo. Solo existe en Android. */}
+      {Platform.OS === 'android' ? <NavigationBar hidden /> : null}
       <AuthProvider>
         <AppGate />
       </AuthProvider>

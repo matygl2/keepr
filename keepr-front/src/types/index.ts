@@ -1,3 +1,6 @@
+/** Los tres documentos de un producto, cada uno con su foto. */
+export type DocumentType = 'receipt' | 'warranty' | 'manual';
+
 export type Category = 'Tech' | 'Home' | 'Fashion' | 'Other';
 
 export type WarrantyStatus = 'active' | 'expiring' | 'expired';
@@ -33,7 +36,9 @@ export interface Product {
   maintenanceHistory: MaintenanceEntry[];
   /** Set once the warranty expiry has been synced to the device's native calendar. */
   calendarEventId?: string;
-  /** Presente si el producto tiene foto de la garantía. Cambia al reemplazar la foto. */
+  /** Id de la foto de cada documento (si la tiene). Cambia al reemplazar la foto. */
+  documents?: Partial<Record<DocumentType, string>>;
+  /** Anterior a `documents`: es lo mismo que `documents.receipt`. */
   receiptPhotoId?: string;
 }
 
@@ -43,7 +48,7 @@ export interface Product {
  */
 export type NewProductInput = Omit<
   Product,
-  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId'
+  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId' | 'documents'
 > & {
   maintenanceHistory?: Omit<MaintenanceEntry, 'id'>[];
 };
