@@ -95,7 +95,7 @@ export default function ProfileScreen() {
         <View style={styles.card}>
           <SettingsRow
             label="Export my data"
-            onPress={() => notImplemented("Export my data")}
+            onPress={() => router.push("/settings/export-data")}
             isLast
           />
         </View>
