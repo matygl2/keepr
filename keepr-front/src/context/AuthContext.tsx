@@ -16,7 +16,7 @@ import {
 } from '../api/client';
 import { clearToken, getToken, saveToken } from '../api/tokenStorage';
 import { AuthUser } from '../types';
-import { KEYS, readJSON, writeJSON } from '../utils/storage';
+import { KEYS, readJSON, removeKey, writeJSON } from '../utils/storage';
 
 type AuthResult = { ok: true } | { ok: false; error: string };
 
@@ -41,6 +41,8 @@ interface AuthContextValue {
   register: (input: RegisterInput) => Promise<AuthResult>;
   login: (email: string, password: string) => Promise<AuthResult>;
   logout: () => Promise<void>;
+  /** Borra la cuenta en el servidor (con todos sus datos) y limpia este dispositivo. */
+  deleteAccount: (password: string) => Promise<AuthResult>;
   /** Reintenta restaurar la sesión (cuando el servidor no respondía). */
   retry: () => Promise<void>;
 }
@@ -156,6 +158,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await clearSession();
   }, [clearSession]);
 
+  // Si sale bien, la app cambia sola a la pantalla de inicio de sesión (user pasa a null),
+  // así que quien la llame solo tiene que ocuparse del caso de error.
+  const deleteAccount = useCallback(
+    async (password: string): Promise<AuthResult> => {
+      if (!user) return { ok: false, error: 'You are not signed in.' };
+      try {
+        await api.post('/auth/delete-account', { password });
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+      // La cuenta ya no existe: también borramos lo que quedó guardado en este teléfono
+      // para ese usuario (sus preferencias y la clave de productos de versiones anteriores).
+      await Promise.all([
+        removeKey(KEYS.notificationPreferences(user.id)),
+        removeKey(KEYS.products(user.id)),
+      ]).catch(() => {});
+      await clearSession();
+      return { ok: true };
+    },
+    [user, clearSession]
+  );
+
   const value = useMemo(
     () => ({
       user,
@@ -165,9 +189,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       login,
       logout,
+      deleteAccount,
       retry: restore,
     }),
-    [user, status, hasOnboarded, completeOnboarding, register, login, logout, restore]
+    [user, status, hasOnboarded, completeOnboarding, register, login, logout, deleteAccount, restore]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

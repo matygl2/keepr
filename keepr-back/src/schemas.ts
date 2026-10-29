@@ -25,6 +25,17 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Enter your password.').max(200),
 });
 
+export const deleteAccountSchema = z.object({
+  // Solo se compara con la contraseña guardada: no se le aplican las reglas de una contraseña nueva.
+  password: z.string().min(1, 'Enter your password.').max(200),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password.').max(200),
+  // Misma regla que al registrarse (mínimo 6 caracteres, máximo 72 bytes).
+  newPassword: password,
+});
+
 // ---------- Productos ----------
 
 export const CATEGORIES = ['Tech', 'Home', 'Fashion', 'Other'] as const;
