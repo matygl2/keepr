@@ -79,7 +79,7 @@ export default function ProfileScreen() {
 
           <SettingsRow
             label="Security"
-            onPress={() => notImplemented("Security")}
+            onPress={() => router.push("/settings/security")}
           />
 
           <SettingsRow
