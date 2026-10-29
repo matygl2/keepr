@@ -18,6 +18,7 @@ import {
   getProductById,
   getWarrantyStatus,
 } from '../../../data/mockData';
+import ProductShareCard from '../../../components/ProductShareCard';
 import ReceiptSection from '../../../components/ReceiptSection';
 import { useProducts } from '../../../context/ProductsContext';
 import { useCalendarSync } from '../../../hooks/useCalendarSync';
@@ -269,6 +270,8 @@ function ProductDetailContent({ product }: { product: Product }) {
               );
             })}
           </View>
+
+          <ProductShareCard product={product} />
 
           <View style={styles.actionsRow}>
             <TouchableOpacity
