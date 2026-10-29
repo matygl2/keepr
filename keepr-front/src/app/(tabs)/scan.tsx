@@ -94,7 +94,7 @@ export default function ScanScreen() {
             onPress={() => router.push('/product/new')}
             hitSlop={8}
           >
-            <Text style={styles.linkText}>Add without a photo</Text>
+            <Text style={styles.linkText}>Add without camera (gallery or PDF)</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

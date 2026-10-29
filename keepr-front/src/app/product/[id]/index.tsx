@@ -18,7 +18,7 @@ import {
   getProductById,
   getWarrantyStatus,
 } from '../../../data/mockData';
-import ReceiptPhotoCard from '../../../components/ReceiptPhotoCard';
+import ReceiptSection from '../../../components/ReceiptSection';
 import { useProducts } from '../../../context/ProductsContext';
 import { useCalendarSync } from '../../../hooks/useCalendarSync';
 import type { Product } from '../../../types';
@@ -241,32 +241,33 @@ function ProductDetailContent({ product }: { product: Product }) {
             />
           </View>
 
-          {product.receiptPhotoId ? (
-            <ReceiptPhotoCard productId={product.id} photoId={product.receiptPhotoId} />
-          ) : null}
+          <ReceiptSection product={product} />
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>DOCUMENTATION</Text>
 
-            {product.documentation.map((doc) => (
-              <View key={doc.name} style={styles.docRow}>
-                <View style={styles.docIconWrap}>
-                  <Text>📄</Text>
+            {product.documentation.map((doc) => {
+              // El recibo cuenta como cargado si hay foto o PDF.
+              const uploaded =
+                doc.uploaded ||
+                (doc.name === 'Receipt' && Boolean(product.receiptPhotoId));
+
+              return (
+                <View key={doc.name} style={styles.docRow}>
+                  <View style={styles.docIconWrap}>
+                    <Text>📄</Text>
+                  </View>
+
+                  <Text style={styles.docName}>{doc.name}</Text>
+
+                  <Text
+                    style={uploaded ? styles.docCheck : styles.docMissing}
+                  >
+                    {uploaded ? '✓' : '—'}
+                  </Text>
                 </View>
-
-                <Text style={styles.docName}>{doc.name}</Text>
-
-                <Text
-                  style={
-                    doc.uploaded
-                      ? styles.docCheck
-                      : styles.docMissing
-                  }
-                >
-                  {doc.uploaded ? '✓' : '—'}
-                </Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
 
           <View style={styles.actionsRow}>

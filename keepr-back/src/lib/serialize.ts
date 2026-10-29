@@ -35,7 +35,6 @@ interface ProductRow {
   }[];
 }
 
-/** Misma forma que el tipo `Product` de la app (sin userId ni createdAt). */
 export function toProduct(p: ProductRow) {
   return {
     id: p.id,
@@ -52,9 +51,10 @@ export function toProduct(p: ProductRow) {
     serialNumber: p.serialNumber,
     documentation: p.documentation,
     calendarEventId: p.calendarEventId ?? undefined,
-    // Si hay foto, la app la pide en GET /products/:id/receipt. Este id cambia
-    // cuando se reemplaza la foto, así la app no muestra una imagen vieja.
-    receiptPhotoId: p.receiptImage ? p.receiptImage.replace(/\.jpg$/, '') : undefined,
+    // Si hay recibo, la app lo pide en GET /products/:id/receipt. Este id cambia
+    // cuando se reemplaza el recibo, así la app no muestra una versión vieja.
+    receiptPhotoId: p.receiptImage ? p.receiptImage.replace(/\.(jpg|pdf)$/, '') : undefined,
+    receiptType: p.receiptImage ? (p.receiptImage.endsWith('.pdf') ? 'pdf' : 'image') : undefined,
     maintenanceHistory: [...p.maintenanceHistory]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((m) => ({

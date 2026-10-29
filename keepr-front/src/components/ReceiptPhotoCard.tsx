@@ -8,18 +8,20 @@ import { colors, radius, spacing } from '../constants/theme';
 interface Props {
   productId: string;
   photoId: string;
+  /** Sin tarjeta ni título propios (para usarla dentro de ReceiptSection). */
+  bare?: boolean;
 }
 
 /** Muestra la foto guardada de la garantía; al tocarla se ve a pantalla completa. */
-export default function ReceiptPhotoCard({ productId, photoId }: Props) {
+export default function ReceiptPhotoCard({ productId, photoId, bare = false }: Props) {
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const source = receiptImageSource(productId, photoId);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>PHOTO</Text>
+    <View style={bare ? styles.bare : styles.card}>
+      {!bare && <Text style={styles.cardTitle}>PHOTO</Text>}
 
       {failed ? (
         <Text style={styles.error}>Couldn't load the photo. Check your connection.</Text>
@@ -53,6 +55,9 @@ export default function ReceiptPhotoCard({ productId, photoId }: Props) {
 }
 
 const styles = StyleSheet.create({
+  bare: {
+    marginBottom: spacing.md,
+  },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.md,

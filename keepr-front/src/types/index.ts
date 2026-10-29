@@ -4,7 +4,7 @@ export type WarrantyStatus = 'active' | 'expiring' | 'expired';
 
 export interface MaintenanceEntry {
   id: string;
-  date: string; // ISO date
+  date: string;
   title: string;
   provider: string;
   cost: number;
@@ -33,17 +33,17 @@ export interface Product {
   maintenanceHistory: MaintenanceEntry[];
   /** Set once the warranty expiry has been synced to the device's native calendar. */
   calendarEventId?: string;
-  /** Presente si el producto tiene foto de la garantía. Cambia al reemplazar la foto. */
+  /** Presente si el producto tiene recibo (foto o PDF). Cambia al reemplazar el recibo. */
   receiptPhotoId?: string;
+  receiptType?: ReceiptType;
 }
 
-/**
- * Lo que se le manda al servidor para crear un producto. El servidor genera
- * el id; si no se manda maintenanceHistory, registra la compra automáticamente.
- */
+export type ReceiptType = 'image' | 'pdf';
+
+
 export type NewProductInput = Omit<
   Product,
-  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId'
+  'id' | 'maintenanceHistory' | 'calendarEventId' | 'receiptPhotoId' | 'receiptType'
 > & {
   maintenanceHistory?: Omit<MaintenanceEntry, 'id'>[];
 };

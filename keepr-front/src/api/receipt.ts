@@ -1,3 +1,4 @@
+import { File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Product } from '../types';
 import { api, apiUrl, getAuthHeaders } from './client';
@@ -75,4 +76,32 @@ export function receiptImageSource(productId: string, photoId: string) {
     headers: getAuthHeaders(),
     cacheKey: `receipt-${productId}-${photoId}`,
   };
+}
+
+/** Sube (o reemplaza) el recibo con un PDF. Va en el mismo campo `image` que las fotos. */
+export async function uploadReceiptPdf(productId: string, pdfUri: string): Promise<Product> {
+  let image: string;
+  try {
+    image = await new File(pdfUri).base64();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Could not read the PDF (${detail})`);
+  }
+  const { product } = await api.put<{ product: Product }>(
+    `/products/${productId}/receipt`,
+    { image },
+    { timeoutMs: UPLOAD_TIMEOUT_MS }
+  );
+  return product;
+}
+
+/** Descarga el PDF a la caché con el token (es privado) y devuelve la ruta local. */
+export async function downloadReceiptPdf(productId: string, photoId: string): Promise<string> {
+  const destination = new File(Paths.cache, `keepr-receipt-${photoId}.pdf`);
+  const file = await File.downloadFileAsync(
+    apiUrl(`/products/${productId}/receipt?v=${photoId}`),
+    destination,
+    { headers: getAuthHeaders(), idempotent: true }
+  );
+  return file.uri;
 }

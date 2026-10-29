@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { api, errorMessage } from '../api/client';
 import { toPatchBody } from '../api/productPayload';
-import { uploadReceipt } from '../api/receipt';
+import { uploadReceipt, uploadReceiptPdf } from '../api/receipt';
 import { MaintenanceEntry, NewProductInput, Product } from '../types';
 
 type ProductsStatus = 'loading' | 'ready' | 'error';
@@ -27,6 +27,7 @@ interface ProductsContextValue {
   removeProduct: (id: string) => Promise<void>;
   /** Sube (o reemplaza) la foto de la garantía de un producto ya guardado. */
   attachReceipt: (id: string, photoUri: string) => Promise<Product>;
+  attachReceiptPdf: (id: string, pdfUri: string) => Promise<Product>;
   addMaintenance: (id: string, entry: Omit<MaintenanceEntry, 'id'>) => Promise<Product>;
 }
 
@@ -90,6 +91,15 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     [replaceProduct]
   );
 
+  const attachReceiptPdf = useCallback(
+    async (id: string, pdfUri: string) => {
+      const product = await uploadReceiptPdf(id, pdfUri);
+      replaceProduct(product);
+      return product;
+    },
+    [replaceProduct]
+  );
+
   const addMaintenance = useCallback(
     async (id: string, entry: Omit<MaintenanceEntry, 'id'>) => {
       const { product } = await api.post<{ product: Product }>(`/products/${id}/maintenance`, entry);
@@ -109,6 +119,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       updateProduct,
       removeProduct,
       attachReceipt,
+      attachReceiptPdf,
       addMaintenance,
     }),
     [
@@ -120,6 +131,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       updateProduct,
       removeProduct,
       attachReceipt,
+      attachReceiptPdf,
       addMaintenance,
     ]
   );

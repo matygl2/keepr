@@ -1,4 +1,6 @@
+import * as DocumentPicker from 'expo-document-picker';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -24,6 +26,9 @@ import { resolvePhotoUri } from '../../api/receipt';
 
 const CATEGORIES: Category[] = ['Tech', 'Home', 'Fashion', 'Other'];
 
+/** Mismo límite que el servidor (5 MB). */
+const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
+
 const CATEGORY_ICONS: Record<Category, string> = {
   Tech: '📱',
   Home: '🏠',
@@ -44,10 +49,12 @@ type FieldName = 'name' | 'store' | 'purchaseDate' | 'price' | 'customExpiry';
 
 export default function NewProductScreen() {
   const router = useRouter();
-  const { addProduct, attachReceipt } = useProducts();
+  const { addProduct, attachReceipt, attachReceiptPdf } = useProducts();
   // Si venís de sacar una foto, llega su ubicación temporal en el teléfono.
   const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
   const [photo, setPhoto] = useState<string | null>(photoUri ? resolvePhotoUri(photoUri) : null);
+  // El recibo puede ser una foto (cámara o galería) o un PDF, nunca los dos.
+  const [pdf, setPdf] = useState<{ uri: string; name: string } | null>(null);
 
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
@@ -60,7 +67,7 @@ export default function NewProductScreen() {
   const [duration, setDuration] = useState<DurationKey>('1y');
   const [customExpiry, setCustomExpiry] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
-  const [docs, setDocs] = useState({ receipt: Boolean(photoUri), warranty: false, manual: false });
+  const [docs, setDocs] = useState({ warranty: false, manual: false });
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [saving, setSaving] = useState(false);
 
@@ -101,6 +108,28 @@ export default function NewProductScreen() {
     return next;
   };
 
+  const pickFromGallery = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', quality: 1 });
+    if (result.canceled) return;
+    setPdf(null);
+    setPhoto(result.assets[0].uri);
+  };
+
+  const pickPdf = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf',
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (asset.size !== undefined && asset.size > MAX_RECEIPT_BYTES) {
+      Alert.alert('File too large', 'The PDF must be 5 MB or smaller.');
+      return;
+    }
+    setPhoto(null);
+    setPdf({ uri: asset.uri, name: asset.name });
+  };
+
   const handleSave = async () => {
     if (saving) return;
     const found = validate();
@@ -126,7 +155,7 @@ export default function NewProductScreen() {
         warrantyExpiryDate: expiryDate,
         serialNumber: serialNumber.trim() || 'N/A',
         documentation: [
-          { name: 'Receipt', uploaded: docs.receipt || photo !== null },
+          { name: 'Receipt', uploaded: photo !== null || pdf !== null },
           { name: 'Warranty document', uploaded: docs.warranty },
           { name: 'Manual', uploaded: docs.manual },
         ],
@@ -138,29 +167,35 @@ export default function NewProductScreen() {
     }
 
     const goToProduct = () => router.replace(`/product/${created.id}`);
-    if (!photo) {
+    const attach = photo
+      ? () => attachReceipt(created.id, photo)
+      : pdf
+        ? () => attachReceiptPdf(created.id, pdf.uri)
+        : null;
+    if (!attach) {
       goToProduct();
       return;
     }
 
-    // El producto ya está guardado: si la foto falla, se puede reintentar o seguir sin ella.
-    const uploadPhoto = async () => {
+    // El producto ya está guardado: si el recibo falla, se puede reintentar o seguir sin él.
+    const uploadReceiptFile = async () => {
       try {
-        await attachReceipt(created.id, photo);
+        await attach();
         goToProduct();
       } catch (err) {
+        const detail = err instanceof Error && err.name !== 'ApiError' ? err.message : errorMessage(err);
         Alert.alert(
-          'Product saved, but the photo was not uploaded',
-          errorMessage(err),
+          'Product saved, but the receipt was not uploaded',
+          detail,
           [
             { text: 'Skip', style: 'cancel', onPress: goToProduct },
-            { text: 'Try again', onPress: () => void uploadPhoto() },
+            { text: 'Try again', onPress: () => void uploadReceiptFile() },
           ],
           { cancelable: false }
         );
       }
     };
-    await uploadPhoto();
+    await uploadReceiptFile();
   };
 
   return (
@@ -184,6 +219,7 @@ export default function NewProductScreen() {
             Enter the purchase details and Keepr will track the warranty for you.
           </Text>
 
+          <Text style={styles.label}>RECEIPT</Text>
           {photo ? (
             <View style={styles.photoCard}>
               <Image source={{ uri: photo }} style={styles.photoThumb} contentFit="cover" />
@@ -195,7 +231,41 @@ export default function NewProductScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          ) : null}
+          ) : pdf ? (
+            <View style={styles.photoCard}>
+              <View style={styles.pdfThumb}>
+                <Text style={styles.pdfThumbIcon}>📄</Text>
+              </View>
+              <View style={styles.photoInfo}>
+                <Text style={styles.photoTitle} numberOfLines={1}>
+                  {pdf.name}
+                </Text>
+                <Text style={styles.photoText}>It will be saved with your product.</Text>
+                <TouchableOpacity onPress={() => setPdf(null)} hitSlop={8}>
+                  <Text style={styles.photoRemove}>Remove PDF</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.attachRow}>
+              <TouchableOpacity
+                style={styles.attachButton}
+                onPress={pickFromGallery}
+                accessibilityRole="button"
+                accessibilityLabel="Attach a receipt photo from the gallery"
+              >
+                <Text style={styles.attachButtonText}>🖼 Gallery</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.attachButton}
+                onPress={pickPdf}
+                accessibilityRole="button"
+                accessibilityLabel="Attach a receipt PDF"
+              >
+                <Text style={styles.attachButtonText}>📎 PDF</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <FormField
             label="PRODUCT NAME *"
@@ -310,13 +380,12 @@ export default function NewProductScreen() {
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>DOCUMENTS YOU HAVE</Text>
+          <Text style={styles.label}>OTHER DOCUMENTS</Text>
           <View style={styles.docsCard}>
             {(
               [
-                ['receipt', 'Receipt'],
-                ['warranty', 'Warranty document'],
-                ['manual', 'Manual'],
+                ['warranty', 'I have the warranty document'],
+                ['manual', 'I have the manual'],
               ] as const
             ).map(([key, label], index, all) => (
               <View
@@ -479,6 +548,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     marginBottom: spacing.xs,
+  },
+  pdfThumb: {
+    width: 72,
+    height: 96,
+    borderRadius: radius.sm,
+    backgroundColor: colors.iconBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pdfThumbIcon: {
+    fontSize: 32,
+  },
+  attachRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  attachButton: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+    backgroundColor: colors.card,
+  },
+  attachButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.secondary,
   },
   photoRemove: {
     fontSize: 13,

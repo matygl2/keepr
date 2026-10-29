@@ -2,8 +2,9 @@ import express, { Router } from 'express';
 import type { AppConfig } from '../config';
 import { HttpError, parse } from '../lib/errors';
 import {
-  decodeJpeg,
+  decodeReceipt,
   deleteReceipt,
+  receiptContentType,
   receiptFilePath,
   RECEIPT_JSON_LIMIT,
   saveReceipt,
@@ -133,13 +134,14 @@ export function productsRouter(config: AppConfig) {
     res.status(204).end();
   });
 
-  // Sube (o reemplaza) la foto de la garantía. Cuerpo: { "image": "<base64 de un JPEG>" }.
+  // Sube (o reemplaza) el recibo. Cuerpo: { "image": "<base64 de un JPEG o de un PDF>" }.
+  // El campo se sigue llamando "image" para no romper la subida desde la cámara.
   router.put('/:id/receipt', express.json({ limit: RECEIPT_JSON_LIMIT }), async (req, res) => {
     const { image } = parse(receiptUploadSchema, req.body);
-    const bytes = decodeJpeg(image);
+    const { bytes, extension } = decodeReceipt(image);
     const current = await getOwned(req.params.id, res.locals.userId);
 
-    const fileName = await saveReceipt(config.uploadsDir, bytes);
+    const fileName = await saveReceipt(config.uploadsDir, bytes, extension);
     try {
       const updated = await db.product.update({
         where: { id: current.id },
@@ -155,17 +157,17 @@ export function productsRouter(config: AppConfig) {
     }
   });
 
-  // Devuelve la foto, solo a su dueño (la app manda el token en el header).
+  // Devuelve el recibo (foto o PDF), solo a su dueño (la app manda el token en el header).
   router.get('/:id/receipt', async (req, res, next) => {
     const current = await getOwned(req.params.id, res.locals.userId);
     const file = current.receiptImage ? receiptFilePath(config.uploadsDir, current.receiptImage) : null;
-    if (!file) throw new HttpError(404, 'This product has no photo.');
+    if (!file) throw new HttpError(404, 'This product has no receipt.');
 
     res.set('Cache-Control', 'private, max-age=3600');
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.type('image/jpeg');
+    res.type(receiptContentType(file));
     res.sendFile(file, (err) => {
-      if (err && !res.headersSent) next(new HttpError(404, 'Photo not found.'));
+      if (err && !res.headersSent) next(new HttpError(404, 'Receipt not found.'));
     });
   });
 
