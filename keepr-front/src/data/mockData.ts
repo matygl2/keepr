@@ -1,4 +1,5 @@
 import { KeeprUser, Product, WarrantyStatus } from '../types';
+import { parseISODate, toLocalISODate } from '../utils/dateUtils';
 
 export const currentUser: KeeprUser = {
   name: 'Lucía Morales',
@@ -204,7 +205,7 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 
 export function getDaysRemaining(warrantyExpiryDate: string): number {
   const now = new Date();
-  const expiry = new Date(warrantyExpiryDate);
+  const expiry = parseISODate(warrantyExpiryDate);
   return Math.ceil((expiry.getTime() - now.getTime()) / DAY_MS);
 }
 
@@ -216,7 +217,7 @@ export function getWarrantyStatus(warrantyExpiryDate: string): WarrantyStatus {
 }
 
 export function formatDate(dateString: string): string {
-  const date = new Date(dateString);
+  const date = parseISODate(dateString);
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -277,5 +278,5 @@ export function addYears(dateString: string, years: number): string {
 }
 
 export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalISODate(new Date());
 }

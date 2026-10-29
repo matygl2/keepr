@@ -22,6 +22,7 @@ import ReceiptPhotoCard from '../../../components/ReceiptPhotoCard';
 import { useProducts } from '../../../context/ProductsContext';
 import { useCalendarSync } from '../../../hooks/useCalendarSync';
 import type { Product } from '../../../types';
+import { parseISODate } from '../../../utils/dateUtils';
 
 const STATUS_DOT_COLOR = {
   active: colors.success,
@@ -33,8 +34,8 @@ function getWarrantyProgress(
   purchaseDate: string,
   expiryDate: string
 ): number {
-  const start = new Date(purchaseDate).getTime();
-  const end = new Date(expiryDate).getTime();
+  const start = parseISODate(purchaseDate).getTime();
+  const end = parseISODate(expiryDate).getTime();
   const now = Date.now();
 
   if (now >= end) return 1;
