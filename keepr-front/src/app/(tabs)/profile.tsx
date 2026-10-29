@@ -111,7 +111,7 @@ export default function ProfileScreen() {
 
           <SettingsRow
             label="Send feedback"
-            onPress={() => notImplemented("Send feedback")}
+            onPress={() => router.push("/settings/send-feedback")}
             isLast
           />
         </View>
