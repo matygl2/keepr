@@ -92,7 +92,7 @@ export const api = {
   put: <T>(path: string, body: unknown, options: { timeoutMs?: number } = {}) =>
     request<T>('PUT', path, body, true, options.timeoutMs),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
-  delete: (path: string) => request<void>('DELETE', path),
+  delete: <T = void>(path: string) => request<T>('DELETE', path),
 };
 
 /** URL completa de una ruta de la API (para mostrar imágenes protegidas). */

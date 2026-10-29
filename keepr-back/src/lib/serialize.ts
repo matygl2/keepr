@@ -25,6 +25,8 @@ interface ProductRow {
   documentation: unknown;
   calendarEventId: string | null;
   receiptImage?: string | null;
+  warrantyImage?: string | null;
+  manualImage?: string | null;
   maintenanceHistory: {
     id: string;
     date: string;
@@ -33,6 +35,10 @@ interface ProductRow {
     cost: number;
     type: string;
   }[];
+}
+
+function photoId(fileName: string | null | undefined): string | undefined {
+  return fileName ? fileName.replace(/\.jpg$/, '') : undefined;
 }
 
 /** Misma forma que el tipo `Product` de la app (sin userId ni createdAt). */
@@ -52,9 +58,15 @@ export function toProduct(p: ProductRow) {
     serialNumber: p.serialNumber,
     documentation: p.documentation,
     calendarEventId: p.calendarEventId ?? undefined,
-    // Si hay foto, la app la pide en GET /products/:id/receipt. Este id cambia
-    // cuando se reemplaza la foto, así la app no muestra una imagen vieja.
-    receiptPhotoId: p.receiptImage ? p.receiptImage.replace(/\.jpg$/, '') : undefined,
+    // Si hay foto, la app la pide en GET /products/:id/documents/:tipo. El id de
+    // cada foto cambia cuando se reemplaza, así la app no muestra una imagen vieja.
+    documents: {
+      receipt: photoId(p.receiptImage),
+      warranty: photoId(p.warrantyImage),
+      manual: photoId(p.manualImage),
+    },
+    // Anterior a `documents`: lo mismo que documents.receipt.
+    receiptPhotoId: photoId(p.receiptImage),
     maintenanceHistory: [...p.maintenanceHistory]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((m) => ({
