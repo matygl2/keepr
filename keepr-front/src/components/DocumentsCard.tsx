@@ -1,4 +1,6 @@
+import * as DocumentPicker from 'expo-document-picker';
 import { Image } from 'expo-image';
+import * as Sharing from 'expo-sharing';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,17 +12,27 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { errorMessage } from '../api/client';
-import { DOCUMENT_TYPES, documentImageSource } from '../api/documents';
+import {
+  DOCUMENT_TYPES,
+  documentImageSource,
+  downloadDocumentPdf,
+  readFileBase64,
+} from '../api/documents';
 import { pickPhotoBase64, PhotoSource } from '../api/pickPhoto';
 import { colors, radius, spacing } from '../constants/theme';
 import { useProducts } from '../context/ProductsContext';
 import { DocumentType, Product } from '../types';
+import ZoomableImage from './ZoomableImage';
+
+/** Mismo límite que el servidor (5 MB). */
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 /**
- * Los tres documentos del producto (recibo, garantía y manual), cada uno con su foto:
- * se puede sacar con la cámara, elegir de la galería, ver a pantalla completa y quitar.
+ * Los tres documentos del producto (recibo, garantía y manual), cada uno con su foto o PDF:
+ * se puede sacar con la cámara, elegir de la galería, subir un PDF, verlo y quitarlo.
  */
 export default function DocumentsCard({ product }: { product: Product }) {
   const { attachDocument, removeDocument } = useProducts();
@@ -30,6 +42,7 @@ export default function DocumentsCard({ product }: { product: Product }) {
   const [busy, setBusy] = useState<DocumentType | null>(null);
 
   const photoIdOf = (type: DocumentType) => product.documents?.[type];
+  const isPdf = (type: DocumentType) => product.documentKinds?.[type] === 'pdf';
   const labelOf = (type: DocumentType) => DOCUMENT_TYPES.find((d) => d.type === type)!.label;
   const flagged = (type: DocumentType) =>
     product.documentation.some((d) => d.name === labelOf(type) && d.uploaded);
@@ -55,9 +68,57 @@ export default function DocumentsCard({ product }: { product: Product }) {
     }
   };
 
+  const addPdf = async (type: DocumentType) => {
+    setSheetFor(null);
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf',
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (asset.size !== undefined && asset.size > MAX_FILE_BYTES) {
+      Alert.alert('File too large', 'The PDF must be 5 MB or smaller.');
+      return;
+    }
+
+    setBusy(type);
+    try {
+      await attachDocument(product.id, type, await readFileBase64(asset.uri));
+    } catch (err) {
+      const detail = err instanceof Error && err.name !== 'ApiError' ? err.message : errorMessage(err);
+      Alert.alert('Could not save the PDF', detail);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // El PDF es privado: se baja con el token y se abre con el visor del teléfono.
+  const openPdf = async (type: DocumentType) => {
+    const photoId = photoIdOf(type);
+    if (!photoId) return;
+    setBusy(type);
+    try {
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('Not available', 'This device cannot open files from Keepr.');
+        return;
+      }
+      const uri = await downloadDocumentPdf(product.id, type, photoId);
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf',
+        dialogTitle: labelOf(type),
+      });
+    } catch (err) {
+      Alert.alert('Could not open the PDF', errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const confirmRemove = (type: DocumentType) => {
     setSheetFor(null);
-    Alert.alert('Remove photo?', `The photo of the ${labelOf(type).toLowerCase()} will be deleted.`, [
+    const what = isPdf(type) ? 'PDF' : 'photo';
+    Alert.alert(`Remove ${what}?`, `The ${what} of the ${labelOf(type).toLowerCase()} will be deleted.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -67,7 +128,7 @@ export default function DocumentsCard({ product }: { product: Product }) {
           try {
             await removeDocument(product.id, type);
           } catch (err) {
-            Alert.alert('Could not remove the photo', errorMessage(err));
+            Alert.alert('Could not remove it', errorMessage(err));
           } finally {
             setBusy(null);
           }
@@ -86,7 +147,19 @@ export default function DocumentsCard({ product }: { product: Product }) {
         const photoId = photoIdOf(type);
         return (
           <View key={type} style={[styles.row, index > 0 && styles.rowBorder]}>
-            {photoId ? (
+            {photoId && isPdf(type) ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => void openPdf(type)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open the ${label} PDF`}
+              >
+                <View style={styles.iconWrap}>
+                  <Text style={styles.pdfIcon}>📄</Text>
+                  <Text style={styles.pdfBadge}>PDF</Text>
+                </View>
+              </TouchableOpacity>
+            ) : photoId ? (
               <TouchableOpacity activeOpacity={0.85} onPress={() => setViewing(type)}>
                 <Image
                   source={documentImageSource(product.id, type, photoId)}
@@ -104,7 +177,13 @@ export default function DocumentsCard({ product }: { product: Product }) {
             <View style={styles.info}>
               <Text style={styles.name}>{label}</Text>
               <Text style={photoId ? styles.statusOk : styles.status}>
-                {photoId ? 'Photo saved · tap to view' : flagged(type) ? 'Marked as available' : 'Not added'}
+                {photoId
+                  ? isPdf(type)
+                    ? 'PDF saved · tap to open'
+                    : 'Photo saved · tap to view'
+                  : flagged(type)
+                    ? 'Marked as available'
+                    : 'Not added'}
               </Text>
             </View>
 
@@ -139,9 +218,17 @@ export default function DocumentsCard({ product }: { product: Product }) {
             >
               <Text style={styles.sheetOptionText}>🖼️  Choose from gallery</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sheetOption}
+              onPress={() => sheetFor && void addPdf(sheetFor)}
+            >
+              <Text style={styles.sheetOptionText}>📎  Upload a PDF</Text>
+            </TouchableOpacity>
             {sheetFor && photoIdOf(sheetFor) ? (
               <TouchableOpacity style={styles.sheetOption} onPress={() => confirmRemove(sheetFor)}>
-                <Text style={[styles.sheetOptionText, styles.danger]}>🗑️  Remove photo</Text>
+                <Text style={[styles.sheetOptionText, styles.danger]}>
+                  🗑️  Remove {isPdf(sheetFor) ? 'PDF' : 'photo'}
+                </Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity style={styles.sheetCancel} onPress={() => setSheetFor(null)}>
@@ -151,15 +238,14 @@ export default function DocumentsCard({ product }: { product: Product }) {
         </Pressable>
       </Modal>
 
-      {/* Foto a pantalla completa */}
+      {/* Foto a pantalla completa: pellizcar para zoom, doble toque para volver, un toque para cerrar.
+          El Modal es otra raíz: necesita su propio GestureHandlerRootView. */}
       <Modal visible={viewing !== null} transparent animationType="fade" onRequestClose={() => setViewing(null)}>
-        <Pressable style={styles.viewer} onPress={() => setViewing(null)}>
+        <GestureHandlerRootView style={styles.viewer}>
           {viewing && viewingId ? (
-            <Image
+            <ZoomableImage
               source={documentImageSource(product.id, viewing, viewingId)}
-              style={styles.full}
-              contentFit="contain"
-              cachePolicy="disk"
+              onClose={() => setViewing(null)}
             />
           ) : null}
           <TouchableOpacity
@@ -169,7 +255,7 @@ export default function DocumentsCard({ product }: { product: Product }) {
           >
             <Text style={styles.closeText}>✕</Text>
           </TouchableOpacity>
-        </Pressable>
+        </GestureHandlerRootView>
       </Modal>
     </View>
   );
@@ -211,6 +297,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.iconBg,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pdfIcon: {
+    fontSize: 18,
+  },
+  pdfBadge: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.primary,
   },
   info: {
     flex: 1,
@@ -291,10 +385,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
     justifyContent: 'center',
-  },
-  full: {
-    width: '100%',
-    height: '100%',
   },
   close: {
     position: 'absolute',

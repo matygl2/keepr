@@ -22,6 +22,7 @@ import { useProducts } from '../../context/ProductsContext';
 import { formatDate } from '../../data/mockData';
 import { Category, Product } from '../../types';
 import { addMonthsISO, isValidISODate, localTodayISO } from '../../utils/validation';
+import { readFileBase64 } from '../../api/documents';
 import { resolvePhotoUri } from '../../api/receipt';
 
 const CATEGORIES: Category[] = ['Tech', 'Home', 'Fashion', 'Other'];
@@ -49,7 +50,7 @@ type FieldName = 'name' | 'store' | 'purchaseDate' | 'price' | 'customExpiry';
 
 export default function NewProductScreen() {
   const router = useRouter();
-  const { addProduct, attachReceipt, attachReceiptPdf } = useProducts();
+  const { addProduct, attachReceipt, attachDocument } = useProducts();
   // Si venís de sacar una foto, llega su ubicación temporal en el teléfono.
   const { photoUri } = useLocalSearchParams<{ photoUri?: string }>();
   const [photo, setPhoto] = useState<string | null>(photoUri ? resolvePhotoUri(photoUri) : null);
@@ -170,7 +171,7 @@ export default function NewProductScreen() {
     const attach = photo
       ? () => attachReceipt(created.id, photo)
       : pdf
-        ? () => attachReceiptPdf(created.id, pdf.uri)
+        ? async () => attachDocument(created.id, 'receipt', await readFileBase64(pdf.uri))
         : null;
     if (!attach) {
       goToProduct();

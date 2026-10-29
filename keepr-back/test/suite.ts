@@ -293,7 +293,7 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
       const file = pdf();
       const up = await call('PUT', `/products/${id}/receipt`, { token, body: { image: file.toString('base64') } });
       assert.equal(up.status, 200);
-      assert.equal(up.json.product.receiptType, 'pdf');
+      assert.equal(up.json.product.documentKinds.receipt, 'pdf');
       assert.match(up.json.product.receiptPhotoId, /^[0-9a-f-]{36}$/);
       assert.equal(JSON.stringify(up.json).includes('.pdf'), false); // no se filtra el nombre del archivo
 
@@ -303,7 +303,15 @@ export function defineApiTests(setup: () => Promise<TestDb>) {
       assert.ok(got.bytes.equals(file));
 
       const photo = await call('PUT', `/products/${id}/receipt`, { token, body: { image: jpeg().toString('base64') } });
-      assert.equal(photo.json.product.receiptType, 'image');
+      assert.equal(photo.json.product.documentKinds.receipt, 'image');
+
+      // Los otros documentos también aceptan PDF
+      const manual = await call('PUT', `/products/${id}/documents/manual`, { token, body: { image: file.toString('base64') } });
+      assert.equal(manual.status, 200);
+      assert.equal(manual.json.product.documentKinds.manual, 'pdf');
+      const gotManual = await rawGet(`/products/${id}/documents/manual`, token);
+      assert.match(gotManual.type ?? '', /^application\/pdf/);
+      assert.ok(gotManual.bytes.equals(file));
     });
 
     it('replaces the photo (deleting the old file) and deletes it together with the product', async () => {
