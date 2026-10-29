@@ -104,6 +104,7 @@ function AppGate() {
             <Stack.Screen name="settings/notifications" />
             <Stack.Screen name="settings/help" />
             <Stack.Screen name="settings/personal-information" />
+            <Stack.Screen name="settings/data-privacy" />
           </Stack>
         </ProductsGate>
       </ProductsProvider>

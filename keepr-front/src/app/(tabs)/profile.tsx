@@ -84,7 +84,7 @@ export default function ProfileScreen() {
 
           <SettingsRow
             label="Data & Privacy"
-            onPress={() => notImplemented("Data & Privacy")}
+            onPress={() => router.push("/settings/data-privacy")}
             isLast
           />
         </View>
