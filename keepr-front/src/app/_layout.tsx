@@ -105,6 +105,7 @@ function AppGate() {
 
             {/* Pantalla de configuración de notificaciones */}
             <Stack.Screen name="settings/notifications" />
+            <Stack.Screen name="settings/help" />
           </Stack>
         </ProductsGate>
       </ProductsProvider>
