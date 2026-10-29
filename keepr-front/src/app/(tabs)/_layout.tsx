@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import SwipeTabs from '../../components/SwipeTabs';
 import { colors } from '../../constants/theme';
 
 function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
@@ -22,6 +23,10 @@ function ScanButton({ focused }: { focused: boolean }) {
 export default function TabsLayout() {
   return (
     <Tabs
+      // Envuelve cada pestaña con el gesto de deslizar.
+      screenLayout={({ route, children }) => (
+        <SwipeTabs routeName={route.name}>{children}</SwipeTabs>
+      )}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.secondary,

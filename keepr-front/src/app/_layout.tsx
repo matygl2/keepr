@@ -6,7 +6,8 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import AuthScreen from "../components/AuthScreen";
@@ -115,10 +116,17 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <AppGate />
-      </AuthProvider>
-    </SafeAreaProvider>
+    // Sin GestureHandlerRootView los gestos no responden (y no tira ningún error).
+    <GestureHandlerRootView style={rootStyles.root}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <AppGate />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const rootStyles = StyleSheet.create({
+  root: { flex: 1 },
+});
