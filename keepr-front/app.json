@@ -51,12 +51,7 @@
           "locationAlwaysAndWhenInUsePermission": "Keepr usa tu ubicación para mostrarte los service/tiendas más cercanos."
         }
       ],
-      [
-        "expo-calendar",
-        {
-          "calendarPermission": "Keepr necesita acceso a tu calendario para agregar recordatorios de vencimiento de garantía."
-        }
-      ],
+
       "expo-image",
       "expo-status-bar",
       "expo-web-browser",

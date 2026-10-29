@@ -1,25 +1,24 @@
-import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import CalendarGrid, { DayMarker } from '../../components/CalendarGrid';
-import ProductIcon from '../../components/ProductIcon';
-import { colors, fonts, radius, spacing } from '../../constants/theme';
-import { getWarrantyStatus } from '../../data/mockData';
-import { useProducts } from '../../context/ProductsContext';
-import { useCalendarSync } from '../../hooks/useCalendarSync';
-import { Product } from '../../types';
-import { toISODateOnly } from '../../utils/dateUtils';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import CalendarGrid, { DayMarker } from "../../components/CalendarGrid";
+import ProductIcon from "../../components/ProductIcon";
+import { colors, fonts, radius, spacing } from "../../constants/theme";
+import { useProducts } from "../../context/ProductsContext";
+import { getWarrantyStatus } from "../../data/mockData";
+import { Product } from "../../types";
+import { toISODateOnly } from "../../utils/dateUtils";
 
 interface DayEvent {
   product: Product;
-  kind: 'purchase' | 'expiry';
+  kind: "purchase" | "expiry";
 }
 
 export default function CalendarScreen() {
@@ -35,8 +34,11 @@ export default function CalendarScreen() {
     products.forEach((product) => {
       const purchaseKey = product.purchaseDate;
       const expiryKey = product.warrantyExpiryDate;
-      map[purchaseKey] = [...(map[purchaseKey] ?? []), { product, kind: 'purchase' }];
-      map[expiryKey] = [...(map[expiryKey] ?? []), { product, kind: 'expiry' }];
+      map[purchaseKey] = [
+        ...(map[purchaseKey] ?? []),
+        { product, kind: "purchase" },
+      ];
+      map[expiryKey] = [...(map[expiryKey] ?? []), { product, kind: "expiry" }];
     });
     return map;
   }, [products]);
@@ -46,10 +48,10 @@ export default function CalendarScreen() {
     Object.entries(eventsByDate).forEach(([date, events]) => {
       const marker: DayMarker = {};
       events.forEach((event) => {
-        if (event.kind === 'purchase') marker.purchase = true;
+        if (event.kind === "purchase") marker.purchase = true;
         else {
           const status = getWarrantyStatus(event.product.warrantyExpiryDate);
-          if (status === 'expired') marker.expired = true;
+          if (status === "expired") marker.expired = true;
           else marker.expiring = true;
         }
       });
@@ -59,7 +61,7 @@ export default function CalendarScreen() {
   }, [eventsByDate]);
 
   const selectedEvents = selectedDate
-    ? eventsByDate[toISODateOnly(selectedDate)] ?? []
+    ? (eventsByDate[toISODateOnly(selectedDate)] ?? [])
     : [];
 
   const goPrevMonth = () => {
@@ -75,7 +77,7 @@ export default function CalendarScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Calendar</Text>
 
@@ -91,27 +93,33 @@ export default function CalendarScreen() {
 
         <View style={styles.legend}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: colors.secondary }]} />
+            <View
+              style={[styles.legendDot, { backgroundColor: colors.secondary }]}
+            />
             <Text style={styles.legendText}>Purchased</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: colors.danger }]} />
+            <View
+              style={[styles.legendDot, { backgroundColor: colors.danger }]}
+            />
             <Text style={styles.legendText}>Warranty expires</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: colors.textMuted }]} />
+            <View
+              style={[styles.legendDot, { backgroundColor: colors.textMuted }]}
+            />
             <Text style={styles.legendText}>Already expired</Text>
           </View>
         </View>
 
         <Text style={styles.sectionTitle}>
           {selectedDate
-            ? selectedDate.toLocaleDateString('en-US', {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
+            ? selectedDate.toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
               })
-            : 'Select a day'}
+            : "Select a day"}
         </Text>
 
         {selectedEvents.length === 0 ? (
@@ -137,8 +145,6 @@ function EventRow({
   event: DayEvent;
   onPress: () => void;
 }) {
-  const { synced, loading, toggle } = useCalendarSync(event.product);
-
   return (
     <View style={styles.eventCard}>
       <TouchableOpacity
@@ -150,27 +156,13 @@ function EventRow({
         <View style={styles.eventInfo}>
           <Text style={styles.eventName}>{event.product.name}</Text>
           <Text style={styles.eventKind}>
-            {event.kind === 'purchase'
-              ? 'Purchased on this day'
-              : 'Warranty expires on this day'}
+            {event.kind === "purchase"
+              ? "Purchased on this day"
+              : "Warranty expires on this day"}
           </Text>
         </View>
         <Text style={styles.chevron}>›</Text>
       </TouchableOpacity>
-
-      {event.kind === 'expiry' && (
-        <TouchableOpacity
-          style={[styles.syncButton, synced && styles.syncButtonActive]}
-          onPress={toggle}
-          disabled={loading}
-        >
-          <Text
-            style={[styles.syncButtonText, synced && styles.syncButtonTextActive]}
-          >
-            {loading ? 'Syncing…' : synced ? '✓ In your Calendar' : '📅 Remind me'}
-          </Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -191,15 +183,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.md,
     marginTop: spacing.md,
     marginBottom: spacing.lg,
   },
   legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   legendDot: {
@@ -228,34 +220,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   eventMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.md,
   },
   eventInfo: {
     flex: 1,
-  },
-  syncButton: {
-    marginTop: spacing.sm,
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  syncButtonActive: {
-    backgroundColor: colors.successBg,
-    borderColor: colors.success,
-  },
-  syncButtonText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.secondary,
-  },
-  syncButtonTextActive: {
-    color: colors.success,
   },
   eventName: {
     fontFamily: fonts.serif,
