@@ -1,18 +1,49 @@
-// Deslizar la fila a la izquierda para mostrar "Delete".
-// También se puede borrar desde el botón del detalle del producto.
-import React, { useRef } from 'react';
-import { Alert, Pressable, StyleSheet, Text } from 'react-native';
+import React, { useRef } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
-} from 'react-native-gesture-handler/ReanimatedSwipeable';
-import { errorMessage } from '../api/client';
-import { colors, radius, spacing } from '../constants/theme';
-import { useProducts } from '../context/ProductsContext';
-import type { Product } from '../types';
+} from "react-native-gesture-handler/ReanimatedSwipeable";
+import Reanimated, {
+  useAnimatedStyle,
+  type SharedValue,
+} from "react-native-reanimated";
+
+import { errorMessage } from "../api/client";
+import { colors, radius, spacing } from "../constants/theme";
+import { useProducts } from "../context/ProductsContext";
+import type { Product } from "../types";
 
 interface Props {
   product: Product;
   children: React.ReactNode;
+}
+
+interface DeleteActionProps {
+  progress: SharedValue<number>;
+  onPress: () => void;
+  productName: string;
+}
+
+function DeleteAction({ progress, onPress, productName }: DeleteActionProps) {
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: progress.value > 0.05 ? 1 : 0,
+    };
+  });
+
+  return (
+    <Reanimated.View style={[styles.actionContainer, animatedStyle]}>
+      <Pressable
+        style={styles.deleteAction}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`Delete ${productName}`}
+      >
+        <Text style={styles.deleteIcon}>🗑</Text>
+        <Text style={styles.deleteText}>Delete</Text>
+      </Pressable>
+    </Reanimated.View>
+  );
 }
 
 export default function SwipeToDeleteRow({ product, children }: Props) {
@@ -21,66 +52,80 @@ export default function SwipeToDeleteRow({ product, children }: Props) {
 
   const confirmDelete = () => {
     Alert.alert(
-      'Delete product',
+      "Delete product",
       `Are you sure you want to delete "${product.name}"? This action cannot be undone.`,
       [
-        { text: 'Cancel', style: 'cancel', onPress: () => rowRef.current?.close() },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => rowRef.current?.close(),
+        },
+        {
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
               await removeProduct(product.id);
             } catch (err) {
               rowRef.current?.close();
-              Alert.alert('Could not delete product', errorMessage(err));
+
+              Alert.alert("Could not delete product", errorMessage(err));
             }
           },
         },
-      ]
+      ],
     );
   };
 
   return (
-    <ReanimatedSwipeable
-      ref={rowRef}
-      friction={2}
-      rightThreshold={40}
-      overshootRight={false}
-      renderRightActions={() => (
-        <Pressable
-          style={styles.deleteAction}
-          onPress={confirmDelete}
-          accessibilityRole="button"
-          accessibilityLabel={`Delete ${product.name}`}
-        >
-          <Text style={styles.deleteIcon}>🗑</Text>
-          <Text style={styles.deleteText}>Delete</Text>
-        </Pressable>
-      )}
-    >
-      {children}
-    </ReanimatedSwipeable>
+    <View style={styles.container}>
+      <ReanimatedSwipeable
+        ref={rowRef}
+        friction={2}
+        rightThreshold={40}
+        overshootRight={false}
+        renderRightActions={(progress) => (
+          <DeleteAction
+            progress={progress}
+            onPress={confirmDelete}
+            productName={product.name}
+          />
+        )}
+      >
+        {children}
+      </ReanimatedSwipeable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  deleteAction: {
+  container: {
+    overflow: "hidden",
+    borderRadius: radius.md,
+  },
+
+  actionContainer: {
     width: 96,
-    marginBottom: spacing.md,
     marginLeft: spacing.sm,
+    marginBottom: spacing.md,
+  },
+
+  deleteAction: {
+    flex: 1,
     borderRadius: radius.md,
     backgroundColor: colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 2,
   },
+
   deleteIcon: {
     fontSize: 20,
   },
+
   deleteText: {
     color: colors.white,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

@@ -1,6 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
-import { errorMessage } from '../../../api/client';
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Alert,
   ScrollView,
@@ -8,22 +6,22 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, fonts, radius, spacing } from '../../../constants/theme';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { errorMessage } from "../../../api/client";
+import DocumentsCard from "../../../components/DocumentsCard";
+import ProductShareCard from "../../../components/ProductShareCard";
+import { colors, fonts, radius, spacing } from "../../../constants/theme";
+import { useProducts } from "../../../context/ProductsContext";
 import {
   formatDate,
   formatMoney,
   formatRemaining,
   getProductById,
   getWarrantyStatus,
-} from '../../../data/mockData';
-import DocumentsCard from '../../../components/DocumentsCard';
-import ProductShareCard from '../../../components/ProductShareCard';
-import { useProducts } from '../../../context/ProductsContext';
-import { useCalendarSync } from '../../../hooks/useCalendarSync';
-import type { Product } from '../../../types';
-import { parseISODate } from '../../../utils/dateUtils';
+} from "../../../data/mockData";
+import type { Product } from "../../../types";
+import { parseISODate } from "../../../utils/dateUtils";
 
 const STATUS_DOT_COLOR = {
   active: colors.success,
@@ -31,18 +29,34 @@ const STATUS_DOT_COLOR = {
   expired: colors.textMuted,
 };
 
-function getWarrantyProgress(
-  purchaseDate: string,
-  expiryDate: string
-): number {
+// Calcula qué porcentaje de garantía queda disponible.
+function getWarrantyProgress(purchaseDate: string, expiryDate: string): number {
   const start = parseISODate(purchaseDate).getTime();
   const end = parseISODate(expiryDate).getTime();
   const now = Date.now();
 
-  if (now >= end) return 1;
-  if (now <= start) return 0;
+  // Evitar cálculos incorrectos con fechas inválidas.
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0;
+  }
 
-  return (now - start) / (end - start);
+  // Si el vencimiento no es posterior a la compra.
+  if (end <= start) {
+    return now >= end ? 0 : 1;
+  }
+
+  // Garantía vencida: barra vacía.
+  if (now >= end) {
+    return 0;
+  }
+
+  // La garantía todavía no comenzó: barra completa.
+  if (now <= start) {
+    return 1;
+  }
+
+  // Porcentaje de garantía restante.
+  return Math.max(0, Math.min(1, (end - now) / (end - start)));
 }
 
 export default function ProductDetailScreen() {
@@ -65,49 +79,50 @@ function ProductDetailContent({ product }: { product: Product }) {
   const router = useRouter();
   const { removeProduct } = useProducts();
 
-  const {
-    synced,
-    loading: calendarLoading,
-    toggle: toggleCalendarSync,
-  } = useCalendarSync(product);
-
   const status = getWarrantyStatus(product.warrantyExpiryDate);
+
   const progress = getWarrantyProgress(
     product.purchaseDate,
-    product.warrantyExpiryDate
+    product.warrantyExpiryDate,
   );
+
+  // Color según el estado de la garantía.
+  const progressColor =
+    status === "expiring"
+      ? colors.danger
+      : status === "expired"
+        ? colors.textMuted
+        : colors.secondary;
 
   const handleDeleteProduct = () => {
     Alert.alert(
-      'Delete product',
+      "Delete product",
       `Are you sure you want to delete "${product.name}"? This action cannot be undone.`,
       [
         {
-          text: 'Cancel',
-          style: 'cancel',
+          text: "Cancel",
+          style: "cancel",
         },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
-              router.replace('/(tabs)');
+              router.replace("/(tabs)");
               await removeProduct(product.id);
             } catch (err) {
-              Alert.alert(
-                'Could not delete product',
-                errorMessage(err)
-              );
+              Alert.alert("Could not delete product", errorMessage(err));
             }
           },
         },
-      ]
+      ],
     );
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.topBar}>
             <TouchableOpacity
@@ -134,9 +149,7 @@ function ProductDetailContent({ product }: { product: Product }) {
 
             <View style={styles.headerText}>
               <Text style={styles.headerTitle}>{product.name}</Text>
-              <Text style={styles.headerSubtitle}>
-                {product.subCategory}
-              </Text>
+              <Text style={styles.headerSubtitle}>{product.subCategory}</Text>
             </View>
           </View>
 
@@ -148,7 +161,9 @@ function ProductDetailContent({ product }: { product: Product }) {
           />
         </View>
 
+        {/* BODY */}
         <View style={styles.body}>
+          {/* PURCHASE */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PURCHASE</Text>
 
@@ -174,11 +189,13 @@ function ProductDetailContent({ product }: { product: Product }) {
             </View>
           </View>
 
+          {/* WARRANTY */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>WARRANTY</Text>
 
             <View style={styles.warrantyRow}>
               <Text style={styles.fieldLabel}>Expires</Text>
+
               <Text style={styles.fieldValue}>
                 {formatDate(product.warrantyExpiryDate)}
               </Text>
@@ -186,11 +203,15 @@ function ProductDetailContent({ product }: { product: Product }) {
 
             <View style={styles.warrantyRow}>
               <Text style={styles.fieldLabel}>Remaining</Text>
+
               <Text
                 style={[
                   styles.fieldValue,
-                  status === 'expiring' && {
+                  status === "expiring" && {
                     color: colors.danger,
+                  },
+                  status === "expired" && {
+                    color: colors.textMuted,
                   },
                 ]}
               >
@@ -198,44 +219,36 @@ function ProductDetailContent({ product }: { product: Product }) {
               </Text>
             </View>
 
-            <View style={styles.progressTrack}>
+            {/* BARRA DE GARANTÍA RESTANTE */}
+            <View
+              style={styles.progressTrack}
+              accessibilityRole="progressbar"
+              accessibilityLabel="Warranty remaining"
+              accessibilityValue={{
+                min: 0,
+                max: 100,
+                now: Math.round(progress * 100),
+              }}
+            >
               <View
                 style={[
                   styles.progressFill,
                   {
-                    width: `${Math.min(progress, 1) * 100}%`,
+                    width: `${progress * 100}%`,
+                    backgroundColor: progressColor,
                   },
                 ]}
               />
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.calendarButton,
-                synced && styles.calendarButtonSynced,
-              ]}
-              onPress={toggleCalendarSync}
-              disabled={calendarLoading}
-            >
-              <Text style={styles.calendarButtonIcon}>
-                {synced ? '✓' : '📅'}
-              </Text>
-
-              <Text
-                style={[
-                  styles.calendarButtonText,
-                  synced && styles.calendarButtonTextSynced,
-                ]}
-              >
-                {calendarLoading
-                  ? 'Syncing…'
-                  : synced
-                    ? 'Added to your Calendar'
-                    : 'Add warranty reminder to Calendar'}
-              </Text>
-            </TouchableOpacity>
+            <Text style={styles.progressCaption}>
+              {status === "expired"
+                ? "Warranty expired"
+                : `${Math.round(progress * 100)}% of warranty remaining`}
+            </Text>
           </View>
 
+          {/* PRODUCT INFORMATION */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>PRODUCT INFORMATION</Text>
 
@@ -244,64 +257,52 @@ function ProductDetailContent({ product }: { product: Product }) {
               value={product.serialNumber}
               isFirst
             />
+
             <InfoRow label="Model" value={product.model} />
+
             <InfoRow label="Brand" value={product.brand} />
-            <InfoRow
-              label="Category"
-              value={product.subCategory}
-              isLast
-            />
+
+            <InfoRow label="Category" value={product.subCategory} isLast />
           </View>
 
+          {/* DOCUMENTS */}
           <DocumentsCard product={product} />
 
+          {/* SHARE */}
           <ProductShareCard product={product} />
 
+          {/* ACTIONS */}
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() =>
-                router.push(`/product/${product.id}/maintenance`)
-              }
+              onPress={() => router.push(`/product/${product.id}/maintenance`)}
             >
               <Text style={styles.actionIcon}>🔧</Text>
-              <Text style={styles.actionLabel}>
-                Maintenance History
-              </Text>
+
+              <Text style={styles.actionLabel}>Maintenance History</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[
-                styles.actionCard,
-                styles.actionCardOutline,
-              ]}
+              style={[styles.actionCard, styles.actionCardOutline]}
               onPress={() =>
-                Alert.alert(
-                  'Transfer Product',
-                  'This is a UI demo action.'
-                )
+                Alert.alert("Transfer Product", "This is a UI demo action.")
               }
             >
               <Text style={styles.actionIcon}>🔗</Text>
-              <Text
-                style={[
-                  styles.actionLabel,
-                  { color: colors.primary },
-                ]}
-              >
+
+              <Text style={[styles.actionLabel, { color: colors.primary }]}>
                 Transfer Product
               </Text>
             </TouchableOpacity>
           </View>
 
+          {/* DELETE */}
           <TouchableOpacity
             style={styles.deleteButton}
             onPress={handleDeleteProduct}
             accessibilityRole="button"
           >
-            <Text style={styles.deleteButtonText}>
-              🗑 Delete product
-            </Text>
+            <Text style={styles.deleteButtonText}>🗑 Delete product</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -339,82 +340,97 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.secondary,
   },
+
   scrollContent: {
     flexGrow: 1,
   },
+
   notFound: {
     padding: spacing.lg,
     color: colors.textPrimary,
   },
+
   header: {
     backgroundColor: colors.secondary,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
+
   topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
+
   editButton: {
     height: 40,
     paddingHorizontal: spacing.md,
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   editText: {
     color: colors.white,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
+
   backButton: {
     width: 40,
     height: 40,
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: spacing.lg,
   },
+
   backIcon: {
     color: colors.white,
     fontSize: 20,
   },
+
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.md,
   },
+
   headerIcon: {
     width: 72,
     height: 72,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   headerText: {
     flex: 1,
   },
+
   headerTitle: {
     fontFamily: fonts.serif,
     fontSize: 26,
     color: colors.white,
   },
+
   headerSubtitle: {
-    color: 'rgba(255,255,255,0.7)',
+    color: "rgba(255,255,255,0.7)",
     fontSize: 14,
     marginTop: 2,
   },
+
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     marginTop: spacing.md,
   },
+
   body: {
     backgroundColor: colors.background,
     padding: spacing.lg,
@@ -423,153 +439,155 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.lg,
     gap: spacing.md,
   },
+
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
     padding: spacing.lg,
   },
+
   cardTitle: {
     fontFamily: fonts.serif,
     fontSize: 15,
     color: colors.primary,
     marginBottom: spacing.md,
   },
+
   threeCol: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
+
   threeColItem: {
     flex: 1,
   },
+
   fieldLabel: {
     fontSize: 12,
     color: colors.textSecondary,
     marginBottom: 4,
   },
+
   fieldValue: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.textPrimary,
   },
+
   warrantyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: spacing.sm,
   },
+
   progressTrack: {
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.border,
     marginTop: spacing.sm,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
+
   progressFill: {
-    height: '100%',
-    backgroundColor: colors.secondary,
+    height: "100%",
     borderRadius: 3,
   },
-  calendarButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
+
+  progressCaption: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    textAlign: "right",
   },
-  calendarButtonSynced: {
-    backgroundColor: colors.successBg,
-    borderColor: colors.success,
-  },
-  calendarButtonIcon: {
-    fontSize: 14,
-  },
-  calendarButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.secondary,
-  },
-  calendarButtonTextSynced: {
-    color: colors.success,
-  },
+
   infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingVertical: spacing.sm,
   },
+
   infoRowBorder: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+
   docRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
     paddingVertical: spacing.sm,
   },
+
   docIconWrap: {
     width: 36,
     height: 36,
     borderRadius: radius.sm,
     backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   docName: {
     flex: 1,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.textPrimary,
   },
+
   docCheck: {
     color: colors.success,
-    fontWeight: '700',
+    fontWeight: "700",
     fontSize: 16,
   },
+
   docMissing: {
     color: colors.textMuted,
-    fontWeight: '700',
+    fontWeight: "700",
     fontSize: 16,
   },
+
   actionsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.md,
   },
+
   actionCard: {
     flex: 1,
     backgroundColor: colors.card,
     borderRadius: radius.md,
     paddingVertical: spacing.lg,
-    alignItems: 'center',
+    alignItems: "center",
     gap: spacing.xs,
   },
+
   actionCardOutline: {
-    backgroundColor: '#F1E4C8',
+    backgroundColor: "#F1E4C8",
   },
+
   actionIcon: {
     fontSize: 22,
   },
+
   actionLabel: {
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.secondary,
     fontSize: 13,
-    textAlign: 'center',
+    textAlign: "center",
   },
+
   deleteButton: {
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.danger,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
+
   deleteButtonText: {
     color: colors.danger,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });
