@@ -16,13 +16,22 @@ import { useAuth } from "../../context/AuthContext";
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
 
+  // Mensaje para las funcionalidades que todavía no están desarrolladas
   const notImplemented = (label: string) =>
-    Alert.alert(label, "This is a UI demo — this screen is not yet built.");
+    Alert.alert(label, "This feature is not available yet.");
 
+  // Confirmación antes de cerrar sesión
   const confirmLogout = () =>
-    Alert.alert("Log out", "Your products stay saved on this device.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Log out", style: "destructive", onPress: () => logout() },
+    Alert.alert("Log out", "Are you sure you want to log out?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: () => logout(),
+      },
     ]);
 
   if (!user) return null;
@@ -32,6 +41,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Profile</Text>
 
+        {/* USER CARD */}
         <View style={styles.userCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{user.initial}</Text>
@@ -47,21 +57,18 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* ACCOUNT */}
         <Text style={styles.groupLabel}>ACCOUNT</Text>
 
         <View style={styles.card}>
           <SettingsRow
             label="Personal information"
-            onPress={() => notImplemented("Personal information")}
-          />
-
-          <SettingsRow
-            label="Email & phone"
-            onPress={() => notImplemented("Email & phone")}
+            onPress={() => router.push("/settings/personal-information")}
             isLast
           />
         </View>
 
+        {/* PREFERENCES */}
         <Text style={styles.groupLabel}>PREFERENCES</Text>
 
         <View style={styles.card}>
@@ -82,6 +89,7 @@ export default function ProfileScreen() {
           />
         </View>
 
+        {/* DATA */}
         <Text style={styles.groupLabel}>DATA</Text>
 
         <View style={styles.card}>
@@ -97,6 +105,7 @@ export default function ProfileScreen() {
           />
         </View>
 
+        {/* SUPPORT */}
         <Text style={styles.groupLabel}>SUPPORT</Text>
 
         <View style={styles.card}>
@@ -112,7 +121,12 @@ export default function ProfileScreen() {
           />
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={confirmLogout}>
+        {/* LOG OUT */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={confirmLogout}
+          activeOpacity={0.8}
+        >
           <Text style={styles.logoutText}>⇥ Log Out</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -125,16 +139,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+
   content: {
     padding: spacing.lg,
     paddingBottom: spacing.xl,
   },
+
   title: {
     fontFamily: fonts.serif,
     fontSize: 28,
     color: colors.primary,
     marginBottom: spacing.lg,
   },
+
   userCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -144,6 +161,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.lg,
   },
+
   avatar: {
     width: 64,
     height: 64,
@@ -152,24 +170,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   avatarText: {
     color: colors.white,
     fontSize: 26,
     fontWeight: "700",
   },
+
   userInfo: {
     flex: 1,
     gap: 4,
   },
+
   userName: {
     fontFamily: fonts.serif,
     fontSize: 19,
     color: colors.primary,
   },
+
   userEmail: {
     fontSize: 13,
     color: colors.textSecondary,
   },
+
   planBadge: {
     alignSelf: "flex-start",
     backgroundColor: colors.iconBg,
@@ -178,11 +201,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     marginTop: 4,
   },
+
   planBadgeText: {
     fontSize: 12,
     fontWeight: "700",
     color: colors.primaryDark,
   },
+
   groupLabel: {
     fontSize: 12,
     letterSpacing: 0.5,
@@ -190,12 +215,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginTop: spacing.sm,
   },
+
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
     marginBottom: spacing.md,
     overflow: "hidden",
   },
+
   logoutButton: {
     marginTop: spacing.md,
     backgroundColor: "#F1E4C8",
@@ -203,6 +230,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: "center",
   },
+
   logoutText: {
     color: colors.primary,
     fontWeight: "700",
