@@ -2,18 +2,22 @@ import {
   PlayfairDisplay_400Regular,
   PlayfairDisplay_700Bold,
   useFonts,
-} from '@expo-google-fonts/playfair-display';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import React, { useEffect } from 'react';
-import { View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import AuthScreen from '../components/AuthScreen';
-import OnboardingScreens from '../components/OnboardingScreens';
-import StatusScreen from '../components/StatusScreen';
-import { colors } from '../constants/theme';
-import { AuthProvider, useAuth } from '../context/AuthContext';
-import { ProductsProvider, useProducts } from '../context/ProductsContext';
+} from "@expo-google-fonts/playfair-display";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import React, { useEffect } from "react";
+import { View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import AuthScreen from "../components/AuthScreen";
+import OnboardingScreens from "../components/OnboardingScreens";
+import StatusScreen from "../components/StatusScreen";
+
+import { colors } from "../constants/theme";
+
+import { AuthProvider, useAuth } from "../context/AuthContext";
+import { NotificationPreferencesProvider } from "../context/NotificationPreferencesContext";
+import { ProductsProvider, useProducts } from "../context/ProductsContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -22,10 +26,11 @@ function ProductsGate({ children }: { children: React.ReactNode }) {
   const { status, errorMessage, reload } = useProducts();
   const { logout } = useAuth();
 
-  if (status === 'loading') {
+  if (status === "loading") {
     return <StatusScreen loading />;
   }
-  if (status === 'error') {
+
+  if (status === "error") {
     return (
       <StatusScreen
         title="Couldn't load your products"
@@ -37,6 +42,7 @@ function ProductsGate({ children }: { children: React.ReactNode }) {
       />
     );
   }
+
   return <>{children}</>;
 }
 
@@ -46,16 +52,16 @@ function AppGate() {
 
   // Mantiene el splash visible hasta saber si hay una sesión guardada.
   useEffect(() => {
-    if (status !== 'loading') {
+    if (status !== "loading") {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [status]);
 
-  if (status === 'loading') {
+  if (status === "loading") {
     return <StatusScreen loading />;
   }
 
-  if (status === 'unreachable') {
+  if (status === "unreachable") {
     return (
       <StatusScreen
         title="Can't reach Keepr"
@@ -79,17 +85,22 @@ function AppGate() {
   }
 
   return (
-    // key={user.id}: al cambiar de cuenta se descarta el estado de la anterior.
-    <ProductsProvider key={user.id}>
-      <ProductsGate>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="product/new" />
-          <Stack.Screen name="product/[id]/index" />
-          <Stack.Screen name="product/[id]/maintenance" />
-        </Stack>
-      </ProductsGate>
-    </ProductsProvider>
+    // Al cambiar de cuenta se descarta el estado del usuario anterior.
+    <NotificationPreferencesProvider key={user.id}>
+      <ProductsProvider key={user.id}>
+        <ProductsGate>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="product/new" />
+            <Stack.Screen name="product/[id]/index" />
+            <Stack.Screen name="product/[id]/maintenance" />
+
+            {/* Pantalla de configuración de notificaciones */}
+            <Stack.Screen name="settings/notifications" />
+          </Stack>
+        </ProductsGate>
+      </ProductsProvider>
+    </NotificationPreferencesProvider>
   );
 }
 
