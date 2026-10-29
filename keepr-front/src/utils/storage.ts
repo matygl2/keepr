@@ -1,11 +1,12 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /** Every AsyncStorage key used by Keepr lives here so they never collide. */
 export const KEYS = {
-  onboarded: 'keepr:onboarded',
-  accounts: 'keepr:accounts',
-  session: 'keepr:session',
+  onboarded: "keepr:onboarded",
+  accounts: "keepr:accounts",
+  session: "keepr:session",
   products: (userId: string) => `keepr:products:${userId}`,
+  notificationPreferences: (userId: string) => `keepr:notifications:${userId}`,
 };
 
 export async function readJSON<T>(key: string, fallback: T): Promise<T> {

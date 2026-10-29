@@ -8,19 +8,33 @@ import ProductCard from "../../components/ProductCard";
 import StatsSummaryCard from "../../components/StatsSummaryCard";
 
 import { colors, fonts, spacing } from "../../constants/theme";
+
+import { useNotificationPreferences } from "../../context/NotificationPreferencesContext";
 import { useProducts } from "../../context/ProductsContext";
-import { getExpiringSoonProducts } from "../../data/mockData";
+
+import { getDaysRemaining } from "../../data/mockData";
 
 export default function HomeScreen() {
   const { products } = useProducts();
 
+  // Preferencias configuradas en Profile → Notifications
+  const { preferences, loading } = useNotificationPreferences();
+
   const [category, setCategory] = useState("All");
 
-  // Productos cuyas garantías están próximas a vencer
-  const expiringSoon = useMemo(
-    () => getExpiringSoonProducts(products),
-    [products],
-  );
+  // Productos cuyas garantías están próximas a vencer,
+  // según los días elegidos por el usuario.
+  const expiringSoon = useMemo(() => {
+    if (loading || !preferences.warrantyAlertsEnabled) {
+      return [];
+    }
+
+    return products.filter((product) => {
+      const daysRemaining = getDaysRemaining(product.warrantyExpiryDate);
+
+      return daysRemaining >= 0 && daysRemaining <= preferences.reminderDays;
+    });
+  }, [products, preferences, loading]);
 
   // Filtrar productos según la categoría seleccionada
   const filtered = useMemo(() => {
@@ -40,8 +54,10 @@ export default function HomeScreen() {
           <View>
             <StatsSummaryCard />
 
-            {/* Aviso de garantías próximas a vencer */}
-            <ExpiringBanner count={expiringSoon.length} />
+            {/* Mostrar avisos solo si hay garantías próximas a vencer */}
+            {expiringSoon.length > 0 && (
+              <ExpiringBanner count={expiringSoon.length} />
+            )}
 
             <CategoryFilter selected={category} onSelect={setCategory} />
 
